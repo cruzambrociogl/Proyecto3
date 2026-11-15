@@ -1,0 +1,228 @@
+﻿PROTOCOLO DE MATRIZ v6b: medio byte (4 bits) = una matriz de 5x4
+Las filas son ticks (serial). Las columnas son los canales D0 D1 P Q enviados al mismo tiempo (paralelo). CLK marca cada tick y nunca se interfiere.
+Cada canal de datos lleva los 4 bits con una mezcla XOR distinta: basta con que sobreviva un solo canal.
+Ejemplo: 'h' = 0110 1000 = dos matrices. Abajo: la primera mitad a b c d = 0 1 1 0.
+
+1. RECETA (qué lleva cada celda)
+Tick,D0,D1,P,Q,Nota
+0,a,b,a^b,a^b^c,
+1,b,c,b^c,b^c^d,
+2,c,d,c^d,a^b^c^d,
+3,d,a^b,a^b^d,a^c^d,
+4,V,V,V,V,V = XOR de las 4 celdas de arriba (validación vertical)
+
+2. MATRIZ PARA a b c d = 0 1 1 0
+Tick,D0,D1,P,Q
+0,0,1,1,0
+1,1,1,0,0
+2,1,0,1,0
+3,0,1,1,1
+4,0,1,1,1
+
+3. SEÑALES (4 lecturas por tick; bit 1 = 0 0 1 1; bit 0 = 1 1 0 0; 0 0 0 0 o 1 1 1 1 = bloqueado; otro patrón = ruidoso; D1 viaja invertido)
+Canal,Tick 0,Tick 1,Tick 2,Tick 3,Tick 4,Bits
+CLK,1 0 1 0,1 1 0 0,1 1 0 0,1 1 0 0,1 1 0 0,doble parpadeo en tick 0 = inicio de matriz
+D0,1 1 0 0,0 0 1 1,0 0 1 1,1 1 0 0,1 1 0 0,0 1 1 0 0
+D1,1 1 0 0,1 1 0 0,0 0 1 1,1 1 0 0,1 1 0 0,1 1 0 1 1 en la matriz; en el canal viaja invertido: 0 0 1 0 0
+P,0 0 1 1,1 1 0 0,0 0 1 1,0 0 1 1,0 0 1 1,1 0 1 1 1
+Q,1 1 0 0,1 1 0 0,1 1 0 0,0 0 1 1,0 0 1 1,0 0 0 1 1
+
+4. VALIDACIONES (todas XOR; cada una debe dar par)
+Validación,Regla,Cuándo,Ejemplo (tick 0 / D0),Resultado
+Horizontal,P = D0 ^ D1,cada tick,0 ^ 1 = 1 y P = 1,pasa
+Diagonal,D1[t] = D0[t+1] y Q[t] = D0[t] ^ P[t+1],cada tick desde el tick 1,D1[0] = 1 y D0[1] = 1,pasa
+Vertical,V = XOR de las 4 celdas del canal,tick 4,D0: 0^1^1^0 = 0 y V = 0,pasa
+Resolver,a b c d con las celdas que llegaron,lo antes posible,todos vivos: el tick 0 da a b c y el tick 1 da d,se conoce en 2 ticks
+
+5. CASO A: un bit mentiroso (parpadeo rápido en D1 en el tick 2; lee 1 en vez de 0)
+Tick,D0,D1,P,Q,Validación
+0,0,1,1,0,
+1,1,1,0,0,
+2,1,[1],1,0,falla horizontal: 1^1 = 0 pero P = 1 (indica la fila)
+3,0,1,1,1,falla diagonal: D1[2] = 1 pero D0[3] = 0
+4,0,1,1,1,falla vertical de D1: 1^1^1^1 = 0 pero V = 1 (indica la columna)
+Corrección,,,,,el cruce de la fila tick 2 con la columna D1 es el mentiroso; se invierte a 0
+
+6. CASO B: mano sobre D0 D1 y P toda la matriz (solo Q vivo)
+Tick,D0,D1,P,Q,Ecuación,Resuelve
+0,E,E,E,0,a^b^c = 0,
+1,E,E,E,0,b^c^d = 0,
+2,E,E,E,0,a^b^c^d = 0,con tick 0: d = 0; con tick 1: a = 0
+3,E,E,E,1,a^c^d = 1,c = 1
+4,E,E,E,1,validación,el tick 1 entonces da b = 1
+Resultado,,,,,a b c d = 0 1 1 0,correcto sin retransmisión (4 ticks en vez de 2)
+
+7. CASO C: el último canal también pierde un tick
+Q tick 0,Q tick 1,Q tick 2,Q tick 3,Q tick 4,Reparación
+0,E,0,1,1,tick perdido = XOR de los otros cuatro = 0^0^1^1 = 0; luego se resuelve como en el caso B
+
+8. CASO D: el último canal pierde dos ticks
+Q tick 0,Q tick 1,Q tick 2,Q tick 3,Q tick 4,Qué pasa
+0,E,E,1,1,3 ecuaciones para 4 bits: 0 1 1 0 y 0 0 0 1 cumplen las dos
+Paso,Acción
+1,el receptor no adivina y guarda las 3 celdas buenas
+2,el CLK nunca se detiene: sabe qué matriz falló (aquí la matriz 5)
+3,NACK pide solo la matriz 5; el emisor repite solo esa (5 s a 1 Hz)
+4,una celda buena más de la repetición decide (Q tick 1 es 0 para 0 1 1 0 y 1 para 0 0 0 1)
+
+9. FRAME (40 bits = 10 medios bytes = 10 matrices = 50 ticks = 50 s a 1 Hz)
+Matriz,0,1,2,3,4,5,6,7,8,9
+Campo,SYN,SYN,SFD,SFD,CTRL,DATA,DATA,CRC,CRC,SEQ
+Después de la última matriz el CRC-8 valida el frame completo y luego ACK o NACK. Meter SYN y SFD dentro de matrices es una suposición.
+
+10. RESULTADOS (fuerza bruta sobre los 16 medios bytes; script docs/experiments/matrix_nibble.py)
+Caso,Recuperado,Se pide de nuevo,Dato incorrecto aceptado,Total
+1 canal muerto toda la matriz,64,0,0,64
+2 canales muertos toda la matriz,96,0,0,96
+3 canales muertos toda la matriz,64,0,0,64
+4 canales muertos toda la matriz,0,16,0,16
+1 vivo y pierde 1 tick,320,0,0,320
+1 vivo y pierde 2 ticks,0,640,0,640
+2 vivos y cada uno pierde 1 tick,2400,0,0,2400
+2 vivos y cada uno pierde 2 ticks,8976,624,0,9600
+los 4 apagados 1 tick,80,0,0,80
+los 4 apagados 2 ticks seguidos,64,0,0,64
+los 4 apagados 3 ticks seguidos,48,0,0,48
+1 bit mentiroso,320,0,0,320
+2 bits mentirosos,3040,0,0,3040
+3 bits mentirosos,18240,0,0,18240
+1 canal mintiendo de cualquier forma,1984,0,0,1984
+1 muerto + 1 canal mintiendo,5952,0,0,5952
+2 muertos + 1 canal mintiendo,3072,2880,0,5952
+2 canales mintiendo y ninguno muerto,12000,80256,0,92256
+3 muertos + el último mintiendo,0,1024,960,1984
+Punto débil: con un solo canal vivo solo su propio bit vertical lo valida; el CRC-8 del frame es la última red.
+
+11. COSTO
+Versión,Bits por matriz,Canales que pueden morir,Ticks por byte,Un frame a 1 Hz
+v6,8,2 de 4,5,25 s
+v6b,4,3 de 4,10,50 s
+
+12. QUIÉN HACE QUÉ
+Parte,Función
+Filas (ticks),parte serial: una fila tras otra
+Columnas (canales),parte paralela: 4 celdas al mismo tiempo
+Validación horizontal,valida los bits durante el tick
+Validación vertical,valida cada canal y repara un tick perdido
+Validación diagonal,une un tick con el siguiente y un canal con otro
+CLK,marca cada tick y el inicio de matriz; nunca se interfiere
+CRC-8 + ACK/NACK,última red para lo que la matriz no ve
+Más canales vivos = el medio byte se conoce antes: 2 ticks con los cuatro y 4 ticks con uno. Eso es lo híbrido.
+
+13. COLAS EN CADA EQUIPO (cada equipo tiene las suyas; un sentido nunca espera al otro)
+Cola,Qué guarda,Orden,Equivalente en CC7
+Outbox,mensajes escritos por el usuario,FIFO,cola de trabajos nuevos (new)
+Ready,frames listos para enviar,por prioridad y FIFO dentro del mismo nivel,cola ready
+Transmisor,el único frame que está en los canales,uno a la vez; no se interrumpe,proceso en ejecución (running)
+Waiting,frame enviado que espera su ACK,uno a la vez (stop-and-wait) con timeout,proceso bloqueado por I/O (waiting)
+Reparación,celdas buenas de un frame que falló,hasta que llega la repetición,buffer
+Inbox,bytes recibidos y validados hasta el END,FIFO,buffer de entrega
+
+14. PRIORIDADES DE LA COLA READY (0 = sale primero)
+Nivel,Qué,Por qué
+0,ACK / NACK,el otro equipo está detenido esperándolo
+1,Retransmisión,ya va tarde
+2,START / DATA / END del mensaje actual,trabajo normal
+3,PING / PONG,solo cuando no hay nada más
+
+15. ESTADOS DE UN FRAME
+Estado,Significado,Pasa a,Cuándo
+NEW,su mensaje está en el outbox,READY,cuando el frame anterior del mensaje ya recibió su ACK
+READY,espera turno en la cola ready,RUNNING,cuando el transmisor queda libre y es el de mayor prioridad
+RUNNING,sus 10 matrices salen por los canales,WAITING,al terminar la última matriz (ACK NACK PING y PONG pasan directo a DONE)
+WAITING,espera su ACK,DONE,llega el ACK con su SEQ
+WAITING,espera su ACK,READY nivel 1,llega un NACK o vence el timeout
+READY nivel 1,retransmisión,FAILED,después de 8 reintentos sin ACK
+DONE,entregado,,el siguiente frame del mensaje pasa de NEW a READY
+
+16. REGLAS
+Regla,Descripción
+1,Un frame a la vez por sentido; el frame que ya salió no se interrumpe
+2,Stop-and-wait: el siguiente frame del mensaje entra a ready solo cuando el anterior recibió su ACK
+3,Timeout = 2 tiempos de frame (el otro equipo puede estar a medio frame antes de responder)
+4,NACK o timeout: se repite el frame completo; el receptor conserva las celdas buenas y la repetición llena los huecos
+5,SEQ: si se pierde un ACK y llega un frame repetido el receptor lo descarta y vuelve a enviar el ACK
+6,Aging: un frame que espera más de 3 turnos en ready sube un nivel; nada espera para siempre
+7,PING solo si no se ha enviado nada en 3 tiempos de frame; cualquier frame recibido cuenta como señal de vida
+8,Máximo 8 reintentos; después el frame pasa a FAILED y el mensaje se marca como no entregado
+
+17. EJEMPLO: A envía 'h' y B envía 'k' al mismo tiempo; el profesor interfiere el DATA de A (1 turno = el tiempo de un frame; [n] = nivel de prioridad)
+Turno,Ready de A,A envía,Ready de B,B envía,Al final del turno
+1,[2] START(h),START(h),vacía,nada,B recibe START y encola ACK; el usuario de B escribe 'k' y START(k) entra a ready
+2,vacía (START en waiting),nada,[0] ACK  [2] START(k),ACK,el ACK sale antes que el START propio; A recibe el ACK y DATA(h) entra a ready
+3,[2] DATA(h),DATA(h),[2] START(k),START(k),interferencia: B no puede resolver la matriz 5; guarda las celdas buenas y encola NACK; A recibe START(k) y encola ACK
+4,[0] ACK,ACK,[0] NACK,NACK,A recibe NACK: DATA(h) pasa de waiting a ready nivel 1; B recibe ACK y DATA(k) entra a ready
+5,[1] DATA(h) retx,DATA(h) retx,[2] DATA(k),DATA(k),B llena los huecos y el CRC-8 pasa: encola ACK; A recibe DATA(k) y encola ACK
+6,[0] ACK,ACK,[0] ACK,ACK,los dos DATA quedan en DONE; END entra a ready en los dos equipos
+7,[2] END,END,[2] END,END,ambos reciben END y encolan ACK
+8,[0] ACK,ACK,[0] ACK,ACK,mensajes completos: A muestra 'k' y B muestra 'h'
+
+18. REFUERZOS (probados con docs/experiments/flicker_nibble.py; 20000 matrices por caso)
+Refuerzo,Qué hace,Por qué
+1. Tres tipos de lectura,válido (0 0 1 1 / 1 1 0 0); bloqueado (0 0 0 0 mano / 1 1 1 1 IR); ruidoso (cualquier otro patrón),un canal que mostró ruido en una matriz no se cree en esa matriz aunque algún tick parezca válido; un canal solo bloqueado conserva sus ticks buenos
+2. D1 viaja invertido,el emisor invierte D1 y el receptor lo vuelve a invertir antes de validar,sin esto la matriz de puros ceros es válida y la misma interferencia en los 4 sensores puede pasar como dato; con D1 invertido ninguna lectura igual en los 4 canales es válida (la más cercana queda a 5 celdas)
+3. Reporte de canales,ACK y PONG llevan 4 bits: uno por canal (D0 D1 P Q); 1 = lo veo bloqueado o ruidoso,el emisor sabe cómo llega cada canal y se muestra en el LOG de los dos equipos
+
+19. PARPADEO RÁPIDO (cada tick del canal interferido = 4 lecturas al azar; a veces parece un bit válido)
+Caso,Sin refuerzo 1: recuperado,Sin refuerzo 1: dato incorrecto,Con refuerzo 1: recuperado,Con refuerzo 1: dato incorrecto
+2 parpadeando + 2 limpios,93.6%,0%,100%,0%
+3 parpadeando + 1 limpio,80.6%,2.9%,100%,0%
+2 parpadeando + 1 bloqueado + 1 limpio,91.7%,0.68%,100%,0%
+1 parpadeando + 2 bloqueados + 1 limpio,99.9%,0%,100%,0%
+4 parpadeando,0.6%,10.95%,0%,0.08%
+Lo que no se recupera se pide de nuevo. Dato incorrecto = aceptado por la matriz; el CRC-8 del frame todavía detecta 255 de cada 256.
+
+20. VIDA DEL ENLACE (estados de cada equipo respecto al otro)
+Estado,Qué significa,Pasa a,Cuándo
+SIN SEÑAL,no se ha oído ningún frame válido,HELLO,al encender: el equipo envía un PING de inmediato
+HELLO,cada equipo anuncia su configuración con PING y el otro responde PONG,SOLO RECIBO,llega un frame válido del otro equipo
+SOLO RECIBO,oigo al otro equipo pero nada confirma que mis frames le llegan,IDLE,llega un PONG o un ACK
+IDLE,conectado y sin mensajes; se envía PING si no se ha enviado nada en 3 tiempos de frame,TRANSFER,hay un mensaje en el outbox o llega un START
+TRANSFER,un mensaje en curso; trabajan las colas y la matriz,IDLE,END y su ACK
+IDLE o TRANSFER,conectado,SOLO RECIBO,pasan 7.5 tiempos de frame sin recibir ACK ni PONG
+cualquiera,,SIN SEÑAL,pasan 7.5 tiempos de frame sin oír ningún frame válido
+Contenido del HELLO,Bits de DATA,Significado,Nota
+PING / PONG,bits 7 y 6,CRC-8 que usa el equipo (0 SMBUS; 1 AUTOSAR; 2 SAE-J1850; 3 MAXIM-DOW),PING y PONG siempre se validan con CRC-8/SMBUS: se pueden leer aunque la configuración sea distinta
+PING / PONG / ACK,bits 3 a 0,reporte de canales D0 D1 P Q (1 = lo veo bloqueado o ruidoso),refuerzo 3
+Si el CRC-8 de los dos equipos no coincide,,,se avisa al usuario y se ofrece adoptar el del otro equipo
+
+21. EL MENSAJE (un mensaje de chat = varios frames; cada uno con su ACK)
+Frame,CTRL,DATA,Cuántos
+START,4,encoding del mensaje (0 UTF-8; 1 Extended ASCII CP437; 2 Extended ASCII ISO-8859-1),1
+DATA,1,un byte del texto,uno por byte (UTF-8 usa de 1 a 4 bytes por carácter)
+END,5,cantidad de bytes enviados mod 256,1
+Otros valores de CTRL,2 ACK; 3 NACK; 6 PING; 7 PONG,,
+Ejemplo,Frames,,
+'h' en UTF-8,START(0)  DATA(68)  END(1),,
+'ñ' en UTF-8,START(0)  DATA(C3)  DATA(B1)  END(2),,
+'ñ' en ISO-8859-1,START(2)  DATA(F1)  END(1),,
+Regla,Descripción,,
+1,el receptor muestra el mensaje como completo solo cuando llega END y su cantidad coincide con los bytes recibidos,,
+2,si la cantidad no coincide el mensaje se marca como incompleto,,
+3,si llega un START con un mensaje abierto el mensaje anterior se descarta como incompleto,,
+4,un DATA o END fuera de un mensaje se reporta como error y se ignora,,
+5,START siempre abre un mensaje nuevo; nunca se trata como duplicado,,
+6,si un frame queda en FAILED (8 reintentos) el emisor detiene el mensaje y lo marca como no entregado,,
+
+22. UNIDADES Y CONSTANTES
+Unidad,Contiene,Duración
+Lectura,una muestra del sensor (0 o 1),un cuarto de tick
+Tick,4 lecturas por canal = una fila de la matriz,1 s a 1 Hz
+Matriz,5 ticks x 4 canales = 20 celdas = 4 bits de datos,5 ticks
+Frame,10 matrices = 40 bits (SYN 8; SFD 8; CTRL 4; DATA 8; CRC 8; SEQ 4),50 ticks
+Mensaje,START + un DATA por byte + END,(bytes + 2) frames
+Constante,Valor,Para qué
+Canales por sentido,5: CLK D0 D1 P Q,CLK nunca se interfiere
+Lecturas por tick,4,distinguir válido / bloqueado / ruidoso
+Frecuencia,1 Hz (configurable),toda la evaluación a 1 Hz
+SYN,1 0 1 0 1 0 1 0,estabilizar el medio
+SFD,B3 = 1 0 1 1 0 0 1 1,inicio del frame
+SEQ,0 a 15,detectar frames repetidos
+CRC-8,SMBUS / AUTOSAR / SAE-J1850 / MAXIM-DOW sobre CTRL + SEQ + DATA,validación final del frame
+Timeout de ACK,2 tiempos de frame,el otro equipo puede estar a medio frame
+Reintentos,8,después el frame pasa a FAILED
+Aging,3 turnos,nada espera para siempre en ready
+PING,después de 3 tiempos de frame sin enviar,saber que el otro equipo sigue ahí
+Ventana de vida,7.5 tiempos de frame,sin oír nada en ese tiempo: SIN SEÑAL
+Capacidad de la matriz,4 bits por 5 ticks = 0.8 x Hz bits por segundo,por sentido
+Dato útil por frame,8 bits por 50 ticks = 0.16 x Hz bits por segundo,por sentido y sin contar el ACK

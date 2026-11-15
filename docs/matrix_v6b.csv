@@ -1,0 +1,228 @@
+﻿MATRIX PROTOCOL v6b: one half byte (4 bits) = one 5x4 matrix
+Rows are ticks (serial). Columns are channels D0 D1 P Q sent at the same time (parallel). CLK marks each tick and is never interfered.
+Each data channel carries all 4 bits in a different XOR mix so that one surviving channel is enough.
+Example byte: 'h' = 0110 1000 = two matrices. Below: the first half a b c d = 0 1 1 0.
+
+1. RECIPE (what each cell carries)
+Tick,D0,D1,P,Q,Note
+0,a,b,a^b,a^b^c,
+1,b,c,b^c,b^c^d,
+2,c,d,c^d,a^b^c^d,
+3,d,a^b,a^b^d,a^c^d,
+4,V,V,V,V,V = XOR of the 4 cells above (vertical check)
+
+2. MATRIX FOR a b c d = 0 1 1 0
+Tick,D0,D1,P,Q
+0,0,1,1,0
+1,1,1,0,0
+2,1,0,1,0
+3,0,1,1,1
+4,0,1,1,1
+
+3. SIGNALS (4 reads per tick; bit 1 = 0 0 1 1; bit 0 = 1 1 0 0; 0 0 0 0 or 1 1 1 1 = blocked; any other pattern = noisy; D1 travels inverted)
+Channel,Tick 0,Tick 1,Tick 2,Tick 3,Tick 4,Bits
+CLK,1 0 1 0,1 1 0 0,1 1 0 0,1 1 0 0,1 1 0 0,double blink on tick 0 = matrix start
+D0,1 1 0 0,0 0 1 1,0 0 1 1,1 1 0 0,1 1 0 0,0 1 1 0 0
+D1,1 1 0 0,1 1 0 0,0 0 1 1,1 1 0 0,1 1 0 0,1 1 0 1 1 in the matrix; on the channel it travels inverted: 0 0 1 0 0
+P,0 0 1 1,1 1 0 0,0 0 1 1,0 0 1 1,0 0 1 1,1 0 1 1 1
+Q,1 1 0 0,1 1 0 0,1 1 0 0,0 0 1 1,0 0 1 1,0 0 0 1 1
+
+4. CHECKS (all XOR; each must come out even)
+Check,Rule,When,Example (tick 0 / D0),Result
+Horizontal,P = D0 ^ D1,every tick,0 ^ 1 = 1 and P = 1,pass
+Diagonal,D1[t] = D0[t+1] and Q[t] = D0[t] ^ P[t+1],every tick from tick 1,D1[0] = 1 and D0[1] = 1,pass
+Vertical,V = XOR of the channel's 4 cells,tick 4,D0: 0^1^1^0 = 0 and V = 0,pass
+Solve,a b c d from the cells that arrived,as soon as possible,all alive: tick 0 gives a b c and tick 1 gives d,known after 2 ticks
+
+5. CASE A: one lying bit (fast flicker on D1 at tick 2; reads 1 instead of 0)
+Tick,D0,D1,P,Q,Check
+0,0,1,1,0,
+1,1,1,0,0,
+2,1,[1],1,0,horizontal fails: 1^1 = 0 but P = 1 (names the row)
+3,0,1,1,1,diagonal fails: D1[2] = 1 but D0[3] = 0
+4,0,1,1,1,vertical of D1 fails: 1^1^1^1 = 0 but V = 1 (names the column)
+Fix,,,,,the crossing of row tick 2 and column D1 is the liar; flip it back to 0
+
+6. CASE B: hand on D0 D1 and P for the whole matrix (only Q alive)
+Tick,D0,D1,P,Q,Equation,Solves
+0,E,E,E,0,a^b^c = 0,
+1,E,E,E,0,b^c^d = 0,
+2,E,E,E,0,a^b^c^d = 0,with tick 0: d = 0; with tick 1: a = 0
+3,E,E,E,1,a^c^d = 1,c = 1
+4,E,E,E,1,check,tick 1 then gives b = 1
+Result,,,,,a b c d = 0 1 1 0,correct with no retransmission (4 ticks instead of 2)
+
+7. CASE C: the last channel also loses one tick
+Q tick 0,Q tick 1,Q tick 2,Q tick 3,Q tick 4,Repair
+0,E,0,1,1,lost tick = XOR of the other four = 0^0^1^1 = 0; then solve as in case B
+
+8. CASE D: the last channel loses two ticks
+Q tick 0,Q tick 1,Q tick 2,Q tick 3,Q tick 4,What happens
+0,E,E,1,1,3 equations for 4 bits: 0 1 1 0 and 0 0 0 1 both fit
+Step,Action
+1,the receiver does not guess and keeps the 3 good cells
+2,the CLK never stops so it knows which matrix failed (here matrix 5)
+3,NACK asks for matrix 5 only; the sender repeats that one (5 s at 1 Hz)
+4,one more good cell from the repeat decides it (Q tick 1 is 0 for 0 1 1 0 and 1 for 0 0 0 1)
+
+9. FRAME (40 bits = 10 half bytes = 10 matrices = 50 ticks = 50 s at 1 Hz)
+Matrix,0,1,2,3,4,5,6,7,8,9
+Field,SYN,SYN,SFD,SFD,CTRL,DATA,DATA,CRC,CRC,SEQ
+After the last matrix the CRC-8 checks the whole frame then ACK or NACK. SYN and SFD inside matrices is an assumption.
+
+10. RESULTS (brute force over all 16 half bytes; script docs/experiments/matrix_nibble.py)
+Case,Recovered,Asked again,Wrong accepted,Total
+1 channel dead all matrix,64,0,0,64
+2 channels dead all matrix,96,0,0,96
+3 channels dead all matrix,64,0,0,64
+4 channels dead all matrix,0,16,0,16
+1 alive and it loses 1 tick,320,0,0,320
+1 alive and it loses 2 ticks,0,640,0,640
+2 alive and each loses 1 tick,2400,0,0,2400
+2 alive and each loses 2 ticks,8976,624,0,9600
+all 4 dark for 1 tick,80,0,0,80
+all 4 dark for 2 ticks in a row,64,0,0,64
+all 4 dark for 3 ticks in a row,48,0,0,48
+1 lying bit,320,0,0,320
+2 lying bits,3040,0,0,3040
+3 lying bits,18240,0,0,18240
+1 channel lying any way,1984,0,0,1984
+1 dead + 1 channel lying,5952,0,0,5952
+2 dead + 1 channel lying,3072,2880,0,5952
+2 channels lying and none dead,12000,80256,0,92256
+3 dead + the last one lying,0,1024,960,1984
+Weak spot: with one channel left only its own vertical bit checks it; the frame CRC-8 is the last net.
+
+11. COST
+Version,Bits per matrix,Channels that can die,Ticks per byte,One frame at 1 Hz
+v6,8,2 of 4,5,25 s
+v6b,4,3 of 4,10,50 s
+
+12. WHO DOES WHAT
+Part,Job
+Rows (ticks),serial part: one row after another
+Columns (channels),parallel part: 4 cells at the same time
+Horizontal check,validates the bits during the tick
+Vertical check,validates each channel and repairs one lost tick
+Diagonal check,ties one tick to the next and one channel to another
+CLK,marks each tick and the matrix start; never interfered
+CRC-8 + ACK/NACK,last net for what the matrix cannot see
+More channels alive = half byte known sooner: 2 ticks with all four and 4 ticks with one. That is the hybrid.
+
+13. QUEUES ON EACH BOARD (each board has its own; one direction never waits for the other)
+Queue,What it holds,Order,CC7 equivalent
+Outbox,messages typed by the user,FIFO,new job queue
+Ready,frames ready to send,by priority and FIFO inside a level,ready queue
+Transmitter,the one frame on the channels,one at a time; not interrupted,running process
+Waiting,frame sent and waiting for its ACK,one at a time (stop-and-wait) with timeout,process blocked on I/O (waiting)
+Repair,good cells of a frame that failed,until the repeat arrives,buffer
+Inbox,bytes received and validated until END,FIFO,delivery buffer
+
+14. PRIORITIES OF THE READY QUEUE (0 = goes first)
+Level,What,Why
+0,ACK / NACK,the other board is stopped waiting for it
+1,Retransmission,it is already late
+2,START / DATA / END of the current message,normal work
+3,PING / PONG,only when there is nothing else
+
+15. STATES OF A FRAME
+State,Meaning,Goes to,When
+NEW,its message is in the outbox,READY,when the previous frame of the message got its ACK
+READY,waits its turn in the ready queue,RUNNING,when the transmitter is free and it has the highest priority
+RUNNING,its 10 matrices go out on the channels,WAITING,after the last matrix (ACK NACK PING and PONG go straight to DONE)
+WAITING,waits for its ACK,DONE,the ACK with its SEQ arrives
+WAITING,waits for its ACK,READY level 1,a NACK arrives or the timeout runs out
+READY level 1,retransmission,FAILED,after 8 retries with no ACK
+DONE,delivered,,the next frame of the message goes from NEW to READY
+
+16. RULES
+Rule,Description
+1,One frame at a time per direction; a frame that started is not interrupted
+2,Stop-and-wait: the next frame of the message enters ready only when the previous one got its ACK
+3,Timeout = 2 frame times (the other board may be mid-frame before it answers)
+4,NACK or timeout: the whole frame is repeated; the receiver keeps the good cells and the repeat fills the holes
+5,SEQ: if an ACK is lost and a repeated frame arrives the receiver drops it and sends the ACK again
+6,Aging: a frame that waits more than 3 turns in ready moves up one level; nothing waits forever
+7,PING only if nothing was sent for 3 frame times; any received frame counts as a sign of life
+8,At most 8 retries; then the frame goes to FAILED and the message is marked as not delivered
+
+17. EXAMPLE: A sends 'h' and B sends 'k' at the same time; the professor interferes with A's DATA (1 turn = the time of one frame; [n] = priority level)
+Turn,A ready,A sends,B ready,B sends,At the end of the turn
+1,[2] START(h),START(h),empty,nothing,B receives START and queues ACK; B's user types 'k' and START(k) enters ready
+2,empty (START in waiting),nothing,[0] ACK  [2] START(k),ACK,the ACK goes before B's own START; A receives the ACK and DATA(h) enters ready
+3,[2] DATA(h),DATA(h),[2] START(k),START(k),interference: B cannot solve matrix 5; it keeps the good cells and queues NACK; A receives START(k) and queues ACK
+4,[0] ACK,ACK,[0] NACK,NACK,A receives NACK: DATA(h) goes from waiting to ready level 1; B receives ACK and DATA(k) enters ready
+5,[1] DATA(h) retx,DATA(h) retx,[2] DATA(k),DATA(k),B fills the holes and the CRC-8 passes: queues ACK; A receives DATA(k) and queues ACK
+6,[0] ACK,ACK,[0] ACK,ACK,both DATA frames are DONE; END enters ready on both boards
+7,[2] END,END,[2] END,END,both receive END and queue ACK
+8,[0] ACK,ACK,[0] ACK,ACK,messages complete: A shows 'k' and B shows 'h'
+
+18. REINFORCEMENTS (tested with docs/experiments/flicker_nibble.py; 20000 matrices per case)
+Reinforcement,What it does,Why
+1. Three kinds of reading,valid (0 0 1 1 / 1 1 0 0); blocked (0 0 0 0 hand / 1 1 1 1 IR); noisy (any other pattern),a channel that showed noise in a matrix is not believed for that matrix even if a tick looks valid; a channel that was only blocked keeps its good ticks
+2. D1 travels inverted,the sender inverts D1 and the receiver inverts it back before the checks,without it the all-zero matrix is valid and the same interference on all 4 sensors can pass as data; with D1 inverted no same-on-all-channels reading is valid (the closest is 5 cells away)
+3. Channel report,ACK and PONG carry 4 bits: one per channel (D0 D1 P Q); 1 = I see it blocked or noisy,the sender knows how each channel arrives and both LOGs show it
+
+19. FAST FLICKER (every tick of the interfered channel = 4 random reads; sometimes it looks like a valid bit)
+Case,Without reinforcement 1: recovered,Without reinforcement 1: wrong data,With reinforcement 1: recovered,With reinforcement 1: wrong data
+2 flickering + 2 clean,93.6%,0%,100%,0%
+3 flickering + 1 clean,80.6%,2.9%,100%,0%
+2 flickering + 1 blocked + 1 clean,91.7%,0.68%,100%,0%
+1 flickering + 2 blocked + 1 clean,99.9%,0%,100%,0%
+4 flickering,0.6%,10.95%,0%,0.08%
+What is not recovered is asked again. Wrong data = accepted by the matrix; the frame CRC-8 still catches 255 of every 256.
+
+20. LIFE OF THE LINK (states of each board towards the other)
+State,Meaning,Goes to,When
+NO SIGNAL,no valid frame has been heard,HELLO,at power on: the board sends a PING right away
+HELLO,each board announces its settings with PING and the other answers PONG,RX ONLY,a valid frame from the other board arrives
+RX ONLY,I hear the other board but nothing confirms that my frames reach it,IDLE,a PONG or an ACK arrives
+IDLE,connected and no messages; a PING is sent if nothing was sent for 3 frame times,TRANSFER,there is a message in the outbox or a START arrives
+TRANSFER,a message in progress; the queues and the matrix work,IDLE,END and its ACK
+IDLE or TRANSFER,connected,RX ONLY,7.5 frame times pass with no ACK and no PONG
+any,,NO SIGNAL,7.5 frame times pass without hearing a valid frame
+HELLO content,DATA bits,Meaning,Note
+PING / PONG,bits 7 and 6,CRC-8 the board uses (0 SMBUS; 1 AUTOSAR; 2 SAE-J1850; 3 MAXIM-DOW),PING and PONG are always checked with CRC-8/SMBUS: readable even when the settings differ
+PING / PONG / ACK,bits 3 to 0,channel report D0 D1 P Q (1 = I see it blocked or noisy),reinforcement 3
+If the CRC-8 of the two boards differs,,,the user is warned and offered to adopt the other board's
+
+21. THE MESSAGE (one chat message = several frames; each one with its ACK)
+Frame,CTRL,DATA,How many
+START,4,encoding of the message (0 UTF-8; 1 Extended ASCII CP437; 2 Extended ASCII ISO-8859-1),1
+DATA,1,one byte of the text,one per byte (UTF-8 uses 1 to 4 bytes per character)
+END,5,number of bytes sent mod 256,1
+Other CTRL values,2 ACK; 3 NACK; 6 PING; 7 PONG,,
+Example,Frames,,
+'h' in UTF-8,START(0)  DATA(68)  END(1),,
+'ñ' in UTF-8,START(0)  DATA(C3)  DATA(B1)  END(2),,
+'ñ' in ISO-8859-1,START(2)  DATA(F1)  END(1),,
+Rule,Description,,
+1,the receiver shows the message as complete only when END arrives and its count matches the bytes received,,
+2,if the count does not match the message is marked as incomplete,,
+3,if a START arrives while a message is open the previous message is dropped as incomplete,,
+4,a DATA or END outside a message is reported as an error and ignored,,
+5,START always opens a new message; it is never treated as a duplicate,,
+6,if a frame ends in FAILED (8 retries) the sender stops the message and marks it as not delivered,,
+
+22. UNITS AND CONSTANTS
+Unit,Contains,Duration
+Read,one sample of the sensor (0 or 1),a quarter of a tick
+Tick,4 reads per channel = one row of the matrix,1 s at 1 Hz
+Matrix,5 ticks x 4 channels = 20 cells = 4 data bits,5 ticks
+Frame,10 matrices = 40 bits (SYN 8; SFD 8; CTRL 4; DATA 8; CRC 8; SEQ 4),50 ticks
+Message,START + one DATA per byte + END,(bytes + 2) frames
+Constant,Value,What for
+Channels per direction,5: CLK D0 D1 P Q,CLK is never interfered
+Reads per tick,4,tell valid / blocked / noisy apart
+Frequency,1 Hz (configurable),the whole evaluation runs at 1 Hz
+SYN,1 0 1 0 1 0 1 0,let the medium settle
+SFD,B3 = 1 0 1 1 0 0 1 1,start of the frame
+SEQ,0 to 15,detect repeated frames
+CRC-8,SMBUS / AUTOSAR / SAE-J1850 / MAXIM-DOW over CTRL + SEQ + DATA,final check of the frame
+ACK timeout,2 frame times,the other board may be mid-frame
+Retries,8,then the frame goes to FAILED
+Aging,3 turns,nothing waits forever in ready
+PING,after 3 frame times without sending,know the other board is still there
+Alive window,7.5 frame times,nothing heard in that time: NO SIGNAL
+Matrix capacity,4 bits per 5 ticks = 0.8 x Hz bits per second,per direction
+Useful data per frame,8 bits per 50 ticks = 0.16 x Hz bits per second,per direction and not counting the ACK
