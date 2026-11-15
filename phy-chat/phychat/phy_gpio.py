@@ -20,6 +20,7 @@ HEADER = {
 }
 _BANK_ADDR = {"44e07000": 0, "4804c000": 1, "481ac000": 2, "481ae000": 3}
 SYSFS = "/sys/class/gpio"
+PINMUX = "/sys/devices/platform/ocp/ocp:%s_pinmux/state"
 
 
 def _bank_bases():
@@ -59,9 +60,19 @@ def _write(path, value, retries=50):
         f.write(value)
 
 
+def set_mode(pin, mode):
+    # in pinmux mode "default" the sysfs value can change while the header pin does not
+    header, num = pin.split("_")
+    path = PINMUX % ("%s_%02d" % (header, int(num)))
+    if os.path.exists(path):
+        _write(path, mode)
+
+
 class Pin:
     def __init__(self, pin, direction):
         self.label = pin
+        if isinstance(pin, str):
+            set_mode(pin, "gpio" if direction == "out" else "gpio_pd")
         self.n = sysfs_number(pin)
         self.path = "%s/gpio%d" % (SYSFS, self.n)
         if not os.path.exists(self.path):

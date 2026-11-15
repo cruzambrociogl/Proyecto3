@@ -18,6 +18,7 @@ Cruz runs his own servers while he tests. Never take his ports and never kill by
 
 ## On the BeagleBone
 
-- Default address over USB: `debian@192.168.7.2`. Copy with `scp -r phy-chat debian@192.168.7.2:~/`.
+- Default address over USB: `debian@192.168.7.2` (macOS may get `192.168.6.2`). Copy with `scp -r phy-chat debian@192.168.7.2:~/`.
+- Over Ethernet (what Cruz uses, 2026-11-15; his Mac did not see the board over USB): `debian@beaglebone.local`, which resolved to `192.168.2.2`.
 - Run `python3 tools/gpio_selftest.py config/<map>.json` before the chat after any wiring change.
 - GPIO is 3.3 V and not 5 V tolerant.

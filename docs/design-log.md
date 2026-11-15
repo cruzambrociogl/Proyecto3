@@ -648,3 +648,13 @@ Cruz's rule: documentation is written in English. Spanish only when he asks for 
 ## 24. Claude context versioned with the project (2026-11-15)
 
 Cruz wants all the context Claude kept outside the project (its memory folder) versioned here, so the work moves to another machine with the folder. Modelled on the IOValence repo: a root `CLAUDE.md` (auto-loaded: overview, quick reference, index of context files, rules, status tracker, decision log) and a `claude/` folder (`context.md`, `analysis.md`, `conventions.md`, `instructions/`). The project-relevant rules from Claude's memory (commit authorship, live-test ports, English docs, keep scripts in the project, build over theory, describe before building) are now rules in `CLAUDE.md`. Added `.gitignore`. Same day: `git init` (branch `main`, repo-local author `cruzambrociogl`, the Galileo account used for PROJECT02) and five first commits: assignment, phy-chat v2 stack, design history + experiments, v6b spec + CSVs, Claude context. No remote yet.
+
+## 25. First real channel: laser blinks from the BBB (2026-11-15)
+
+DL-591 confirmed by Cruz as **IR receivers**. First hardware test: one KY-008 laser driven from the BBB, to prove the control path before the receiver.
+
+- **Connection:** the Mac did not see the BBB over USB (no USB network, 192.168.7.2 and 192.168.6.2 silent). Ethernet to the router works: `debian@beaglebone.local` (192.168.2.2), with Cruz's SSH key already on the board. Image: Debian 10 Buster IoT 2020-04-06, kernel 4.19.94-ti-r42, Python 3.7.3; user `debian` is in the `gpio` group.
+- **Circuit:** P8_7 → 1 kΩ → base of an NPN; KY-008 `S` to the Elegoo MB v2 5 V rail, KY-008 `-` to the collector, emitter to GND; Elegoo GND tied to BBB GND. The 5 V never touches a BBB pin.
+- **Tool:** `phy-chat/tools/blink.py <tx> [--hz N] [--rx PIN]` blinks a pin and can print what a receiver pin sees.
+- **Finding:** with P8_7 in `config-pin` mode `default`, the sysfs GPIO value toggled but the laser stayed off. After `config-pin P8_07 gpio` it lit and blinked at 1 Hz. So every pin we use must be set to `gpio` (outputs) or `gpio_input` / `gpio_pd` (inputs) first. The mode is lost on reboot, so `Pin` in `phychat/phy_gpio.py` now sets it when it opens a pin (outputs `gpio`, inputs `gpio_pd` so a loose input reads 0 like a blocked channel). Checked on the board: P8_7 reset to `default`, then `blink.py` switched it to `gpio` and the laser blinked; P8_17 opened as input became `gpio_pd`.
+- **Next:** wire a DL-591 receiver to a 3.3 V input and run `blink.py P8_7 --rx <pin>`.

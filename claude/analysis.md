@@ -51,4 +51,5 @@ tests/test_stack.py (15), tests/test_fec.py (14)
 
 - With 2 lanes, junk ending in `11 00 10` before a SYN can lock the deframer early (about 1 in 64); ARQ recovers it. The test uses a seeded random generator.
 - `GpioPhy` uses sysfs GPIO and falls back to polling if edge interrupts fail.
+- `Pin` writes the pinmux state (`gpio` out, `gpio_pd` in) before exporting: in mode `default` a pin's sysfs value toggled but the header pin did not (P8_7, 2026-11-15).
 - The GPIO PHY still runs `--coding plain`; FEC needs 4 samples per tick.
