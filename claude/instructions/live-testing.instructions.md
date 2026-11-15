@@ -20,5 +20,13 @@ Cruz runs his own servers while he tests. Never take his ports and never kill by
 
 - Default address over USB: `debian@192.168.7.2` (macOS may get `192.168.6.2`). Copy with `scp -r phy-chat debian@192.168.7.2:~/`.
 - Over Ethernet (what Cruz uses, 2026-11-15; his Mac did not see the board over USB): `debian@beaglebone.local`, which resolved to `192.168.2.2`.
+- Sync after every change in `phy-chat/` (CLAUDE.md rule 13), from `PROJECT03/`:
+
+  ```
+  rsync -a --exclude __pycache__ --exclude logs/ --exclude .DS_Store phy-chat/ debian@beaglebone.local:phy-chat/
+  rsync -anci --exclude __pycache__ --exclude logs/ --exclude .DS_Store phy-chat/ debian@beaglebone.local:phy-chat/   # prints nothing when in sync
+  ```
+
+  `ssh` prints the Debian login banner on every call; filter it out of the output.
 - Run `python3 tools/gpio_selftest.py config/<map>.json` before the chat after any wiring change.
 - GPIO is 3.3 V and not 5 V tolerant.

@@ -50,6 +50,7 @@ Load the file a task needs; don't load them all at once.
 10. **Build over theory:** prefer a working skeleton with swap points over new speculative experiments. Run an experiment only if it settles a pending decision, and report only what actually ran.
 11. **BBB GPIO is 3.3 V and not 5 V tolerant.** Never suggest wiring a 5 V output straight to a pin.
 12. **Living documentation:** when the design, hardware or status changes, update `docs/design-log.md` (new dated section) and the tracker below.
+13. **Auto-sync to the BBB:** after any change in `phy-chat/`, sync it to the board right away (command in `claude/instructions/live-testing.instructions.md`), check nothing differs, and tell Cruz "synced to the BBB". Cruz runs the programs on the board himself; don't start or stop them unless he asks.
 
 ## Status tracker
 
@@ -58,6 +59,7 @@ Load the file a task needs; don't load them all at once.
 **Done**
 - v1/v2 stack in `phy-chat/`: web chat, LOG, oscilloscope view, UTF-8 / Extended ASCII, START/DATA/END messages, frame, CRC-8 ×4, ACK/NACK, stop-and-wait, SEQ, PING/PONG link health, simulated medium with interference buttons, GPIO PHY (1 read per tick), 29 tests.
 - Protocol v6b designed, verified by brute force, written as `docs/protocol.md`, accepted by the professor.
+- First real channel on the BBB: KY-008 laser (P8_7, NPN driver) → DL-591 + NPN gain stage (P8_17, inverted), error-free for 1 minute at 1 Hz (`docs/design-log.md` §25–§26).
 
 **Next (build order, see `claude/instructions/build-v6b.instructions.md`)**
 1. ⬜ Matrix line coding in the simulator (5 channels, three kinds of reading, D1 inverted, CLK matrix mark, LOG and oscilloscope).
@@ -69,7 +71,7 @@ Load the file a task needs; don't load them all at once.
 
 **Blocked / waiting on Cruz**
 - Parts: only 3 channels per direction on hand, 5 needed (`docs/design-log.md` §22).
-- DL-591 identity (probably IR receivers), buzzer type (active/passive).
+- Buzzer type (active/passive). (DL-591 confirmed: IR receivers.)
 - Second BBB not available yet. Both nodes run on one board until then.
 
 ## Decision log

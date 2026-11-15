@@ -647,7 +647,7 @@ Cruz's rule: documentation is written in English. Spanish only when he asks for 
 
 ## 24. Claude context versioned with the project (2026-11-15)
 
-Cruz wants all the context Claude kept outside the project (its memory folder) versioned here, so the work moves to another machine with the folder. Modelled on the IOValence repo: a root `CLAUDE.md` (auto-loaded: overview, quick reference, index of context files, rules, status tracker, decision log) and a `claude/` folder (`context.md`, `analysis.md`, `conventions.md`, `instructions/`). The project-relevant rules from Claude's memory (commit authorship, live-test ports, English docs, keep scripts in the project, build over theory, describe before building) are now rules in `CLAUDE.md`. Added `.gitignore`. Same day: `git init` (branch `main`, repo-local author `cruzambrociogl`, the Galileo account used for PROJECT02) and five first commits: assignment, phy-chat v2 stack, design history + experiments, v6b spec + CSVs, Claude context. No remote yet.
+Cruz wants all the context Claude kept outside the project (its memory folder) versioned here, so the work moves to another machine with the folder. Modelled on the IOValence repo: a root `CLAUDE.md` (auto-loaded: overview, quick reference, index of context files, rules, status tracker, decision log) and a `claude/` folder (`context.md`, `analysis.md`, `conventions.md`, `instructions/`). The project-relevant rules from Claude's memory (commit authorship, live-test ports, English docs, keep scripts in the project, build over theory, describe before building) are now rules in `CLAUDE.md`. Added `.gitignore`. Same day: `git init` (branch `main`, repo-local author `cruzambrociogl`, the Galileo account used for PROJECT02) and five first commits: assignment, phy-chat v2 stack, design history + experiments, v6b spec + CSVs, Claude context. Remote added the same day: `git@github-edu:cruzambrociogl/Proyecto3.git` (GitHub `cruzambrociogl/Proyecto3`, through the `github-edu` SSH alias).
 
 ## 25. First real channel: laser blinks from the BBB (2026-11-15)
 
@@ -658,3 +658,26 @@ DL-591 confirmed by Cruz as **IR receivers**. First hardware test: one KY-008 la
 - **Tool:** `phy-chat/tools/blink.py <tx> [--hz N] [--rx PIN]` blinks a pin and can print what a receiver pin sees.
 - **Finding:** with P8_7 in `config-pin` mode `default`, the sysfs GPIO value toggled but the laser stayed off. After `config-pin P8_07 gpio` it lit and blinked at 1 Hz. So every pin we use must be set to `gpio` (outputs) or `gpio_input` / `gpio_pd` (inputs) first. The mode is lost on reboot, so `Pin` in `phychat/phy_gpio.py` now sets it when it opens a pin (outputs `gpio`, inputs `gpio_pd` so a loose input reads 0 like a blocked channel). Checked on the board: P8_7 reset to `default`, then `blink.py` switched it to `gpio` and the laser blinked; P8_17 opened as input became `gpio_pd`.
 - **Next:** wire a DL-591 receiver to a 3.3 V input and run `blink.py P8_7 --rx <pin>`.
+
+## 26. First light channel works: laser → DL-591 at 1 Hz (2026-11-15)
+
+Test: `blink.py P8_7 --rx P8_17` (laser on P8_7 as in §25, receiver on P8_17), 1 Hz, read in the middle of each half period.
+
+- **DL-591 alone is too weak for the red laser.** Wired as phototransistor + resistor to GND (output at the emitter), RX stayed 0. With 100 kΩ the output went from 0 V (laser off) to only 0.3 V (laser on), about 3 µA; the BBB needs > 2 V for a 1. The dark IR filter passes only a little of the 650 nm red. Answer to "can the IR receiver see the laser": yes, weakly, so it needs a gain stage.
+- **Receiver circuit that works** (all from the BBB 3.3 V, so P8_17 can never see more than 3.3 V):
+
+  ```
+  P9_3 (3.3 V) ──┬──────────── DL-591 short leg
+                 │             DL-591 long leg ──┬── base, NPN #2
+              [10 kΩ]                            │
+                 │                        [470 kΩ] (220 kΩ–1 MΩ works)
+                 ├──── P8_17                     │
+                 │                               │
+           collector, NPN #2                     │
+           emitter ──────────── P9_1 (GND) ──────┘
+  ```
+
+  The second NPN multiplies the DL-591 current about 100–200 times. Output is **inverted**: laser on → P8_17 = 0, laser off → P8_17 = 1. The code must invert this channel (the protocol already inverts D1, `protocol.md` §3).
+- **First version without the base resistor:** laser-on reads were always right, but 7 of 28 laser-off reads came back 0. Likely room-light flicker amplified by the bare base (the errors came in a regular rhythm). Fix: a base-to-GND resistor (220 kΩ–1 MΩ) and a dark tube around the sensor, which blocks room light but lets the beam in. Cruz fitted both.
+- **Result with both fixes:** a full minute at 1 Hz, every reading correct (inverted), no errors.
+- **Next:** block the beam by hand (TX=1 should read RX=1, the "blocked" case); try 4 Hz (`--hz 4`) to check it follows a quarter tick of 250 ms; then the IR LED → DL-591 channel.
