@@ -46,7 +46,7 @@ Load the file a task needs; don't load them all at once.
 6. **English** for all docs and notes. Spanish only when Cruz asks, and only as a translation of an English original. In Spanish versions keep technical terms in English (tick, frame, CLK, XOR, CRC-8, ACK/NACK).
 7. **Keep scripts in the project**, never only in a scratch folder. An earlier scratchpad was wiped and the Excel generator was lost with it.
 8. **Live tests never touch Cruz's processes:** non-default ports, stop by PID. See `claude/instructions/live-testing.instructions.md`.
-9. **Commits:** Cruz is the only author. No `Co-Authored-By` or any Claude attribution, even if the tool suggests one. Commit only when asked.
+9. **Commits:** Cruz is the only author (repo-local identity `cruzambrociogl`, his Galileo account). No `Co-Authored-By` or any Claude attribution, even if the tool suggests one. Commit only when asked. A pushed remote must use the `github-edu` SSH alias (`git@github-edu:Owner/repo.git`); plain `github.com` authenticates as his work account.
 10. **Build over theory:** prefer a working skeleton with swap points over new speculative experiments. Run an experiment only if it settles a pending decision, and report only what actually ran.
 11. **BBB GPIO is 3.3 V and not 5 V tolerant.** Never suggest wiring a 5 V output straight to a pin.
 12. **Living documentation:** when the design, hardware or status changes, update `docs/design-log.md` (new dated section) and the tracker below.
