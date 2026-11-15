@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PHY Chat</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --ink: #1c2330; --muted: #6b7484; --line: #e2e5ea;
+    --me: #2f6fde; --me-ink: #fff; --peer: #eef0f4;
+    --syn: #9aa3b2; --sfd: #8a5cd6; --ctrl: #d9822b; --data: #2f6fde; --crc: #1f9d6b; --seq: #c2417a;
+    --ok: #1f9d6b; --bad: #d64545; --warn: #c98a12;
+    --b-SYN: var(--syn); --b-SFD: var(--sfd); --b-CTRL: var(--ctrl); --b-DATA: var(--data); --b-CRC: var(--crc); --b-SEQ: var(--seq);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --panel: #1a1f27; --ink: #e6e9ef; --muted: #8b93a3; --line: #2a313c;
+      --me: #3d7ef0; --peer: #252c37;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); height: 100vh; display: flex; flex-direction: column;
+         font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center;
+           padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  header h1 { font-size: 16px; margin: 0; }
+  .chip { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-left: auto; }
+  .controls label { font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+  select, input, button { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+                          border-radius: 6px; padding: 4px 8px; }
+  button { cursor: pointer; }
+  button.primary { background: var(--me); color: #fff; border-color: var(--me); }
+  main { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.4fr); gap: 12px;
+         padding: 12px 16px; flex: 1; min-height: 0; }
+  @media (max-width: 800px) { body { height: auto; } main { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+            display: flex; flex-direction: column; min-height: 0; }
+  section h2 { font-size: 13px; margin: 0; padding: 10px 12px; border-bottom: 1px solid var(--line);
+               display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  #chat { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; min-height: 240px; }
+  .msg { max-width: 85%; padding: 8px 10px; border-radius: 12px; word-wrap: break-word; }
+  .msg.me { align-self: flex-end; background: var(--me); color: var(--me-ink); }
+  .msg.peer { align-self: flex-start; background: var(--peer); }
+  .msg.partial { opacity: .7; border: 1px dashed var(--muted); }
+  .msg .meta { font-size: 11px; opacity: .8; margin-top: 4px; }
+  .msg .bytes { font: 11px ui-monospace, Menlo, monospace; opacity: .85; margin-top: 4px; }
+  .bar { height: 3px; background: rgba(255,255,255,.35); border-radius: 2px; margin-top: 5px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: #fff; width: 0; transition: width .15s; }
+  form { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--line); }
+  form input { flex: 1; }
+  #stats { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  #stats span { font-size: 12px; color: var(--muted); }
+  #stats b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  #log { flex: 1; overflow-y: auto; font: 12px ui-monospace, Menlo, monospace; min-height: 240px; }
+  .row { display: grid; grid-template-columns: 64px 34px 52px 1fr; gap: 8px; padding: 4px 12px;
+         border-bottom: 1px solid var(--line); align-items: baseline; }
+  .row .t { color: var(--muted); }
+  .row .dir.tx { color: var(--me); } .row .dir.rx { color: var(--crc); }
+  .row.bad { background: color-mix(in srgb, var(--bad) 10%, transparent); }
+  .row.note { grid-template-columns: 64px 1fr; color: var(--muted); }
+  .row.note.err { color: var(--bad); } .row.note.warn { color: var(--warn); }
+  .bits span { padding: 0 2px; border-radius: 3px; margin-right: 2px; }
+  .b-syn { color: var(--syn); } .b-sfd { color: var(--sfd); } .b-ctrl { color: var(--ctrl); }
+  .b-data { color: var(--data); } .b-crc { color: var(--crc); } .b-seq { color: var(--seq); }
+  .legend { font-size: 11px; font-weight: normal; }
+  .legend span { margin-left: 6px; }
+  .tag { font-size: 11px; padding: 0 5px; border-radius: 4px; border: 1px solid currentColor; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); }
+  #medium { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 8px 12px;
+            border-bottom: 1px solid var(--line); font-size: 12px; }
+  #medium .lbl { color: var(--muted); width: 100%; }
+  .ch { display: flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 8px; padding: 3px 6px; }
+  .ch b { min-width: 26px; }
+  .ch button { font-size: 11px; padding: 1px 6px; }
+  .ch button.on { background: var(--bad); border-color: var(--bad); color: #fff; }
+  .h { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); opacity: .5; }
+  .h.ok { background: var(--ok); opacity: 1; } .h.flaky { background: var(--warn); opacity: 1; }
+  .h.down { background: var(--bad); opacity: 1; box-shadow: 0 0 6px var(--bad); }
+  .tag.fix { color: var(--warn); }
+  #scopebox { display: none; margin: 0 16px 12px; }
+  body.scoping { height: auto; }
+  body.scoping main { height: 58vh; min-height: 420px; flex: none; }
+  body.scoping #scopebox { display: flex; }
+  #scopeinfo { font: 12px ui-monospace, Menlo, monospace; font-weight: normal; }
+  #scope { overflow-x: auto; padding: 8px 12px 12px; }
+  #scope .empty { color: var(--muted); font-size: 13px; padding: 20px 0; }
+  #scope svg text { font: 11px ui-monospace, Menlo, monospace; }
+  .scopebtn { font-size: 11px; padding: 0 5px; margin-left: 4px; }
+  #link { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 10px;
+          border-radius: 999px; border: 1px solid var(--line); }
+  #link i { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  #link.connected i { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+  #link.rx_only i { background: var(--warn); }
+  #link.down i { background: var(--bad); }
+  #link small { color: var(--muted); }
+  #warn { display: none; gap: 10px; align-items: center; padding: 8px 16px; font-size: 13px;
+          background: color-mix(in srgb, var(--warn) 18%, var(--panel)); border-bottom: 1px solid var(--line); }
+  #warn button { font-size: 12px; padding: 2px 8px; }
+  body.hide-hb .row.hb { display: none; }
+  .legend label { font-size: 11px; display: inline-flex; gap: 4px; align-items: center; margin-left: 10px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">PHY Chat</h1>
+  <span id="link" class="down"><i></i><span id="linktext">Sin señal</span> <small id="linkinfo"></small></span>
+  <span class="chip" id="phy"></span>
+  <span class="chip" id="frameinfo"></span>
+  <div class="controls">
+    <label>CRC-8 <select id="crc"></select></label>
+    <label>Encoding <select id="enc"></select></label>
+    <label id="scopel"><input type="checkbox" id="scopeon"> 🔬 Osciloscopio</label>
+    <label id="noisebox">Ruido <input id="noise" type="range" min="0" max="0.05" step="0.005" value="0"> <span id="noisev">0%</span></label>
+  </div>
+</header>
+<div id="warn"></div>
+<main>
+  <section>
+    <h2>Sala de Chat</h2>
+    <div id="medium"></div>
+    <div id="chat"></div>
+    <form id="form"><input id="text" autocomplete="off" placeholder="Escriba un mensaje… (prueba: ñ € 😀)"><button class="primary">Enviar</button></form>
+  </section>
+  <section>
+    <h2>LOG del protocolo
+      <span class="legend"><span class="b-syn">SYN</span><span class="b-sfd">SFD</span><span class="b-ctrl">CTRL</span><span class="b-data">DATA</span><span class="b-crc">CRC</span><span class="b-seq">SEQ</span><label><input type="checkbox" id="showhb"> PING/PONG</label></span>
+    </h2>
+    <div id="stats"></div>
+    <div id="log"></div>
+  </section>
+</main>
+<section id="scopebox">
+  <h2><span>🔬 Osciloscopio · último frame recibido <span id="scopeinfo"></span></span>
+    <span class="legend">gris = emitido · color = recibido · ● = lectura · ┆ = mitad del tick (CLK baja) · 🔬 en el LOG abre otro frame</span></h2>
+  <div id="scope"><div class="empty">Envíe un carácter desde el otro nodo; aquí aparece cada tick del frame que llega a este nodo.</div></div>
+</section>
+<script>
+const $ = (id) => document.getElementById(id);
+const chat = $("chat"), log = $("log");
+const outMsgs = {};
+let partialEl = null, state = null;
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c])); }
+function hhmmss(ts) { const d = new Date(ts * 1000); return d.toTimeString().slice(0, 8); }
+function hex(n) { return n.toString(16).toUpperCase().padStart(2, "0"); }
+function stick(el) { return el.scrollHeight - el.scrollTop - el.clientHeight < 40; }
+
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  return r.json();
+}
+
+function renderState(s) {
+  state = s;
+  document.title = "PHY Chat " + s.name;
+  $("title").textContent = "PHY Chat · Nodo " + s.name;
+  $("phy").textContent = `PHY ${s.phy} · ${s.channels.join(" + ")} · ${s.hz} Hz`;
+  $("frameinfo").textContent = `Coding ${CODING_TEXT[s.coding]} · Frame: ${s.frame.ticks} ticks (${s.frame.seconds.toFixed(2)} s) · SFD ${s.frame.sfd}`;
+  $("crc").innerHTML = s.crc_variants.map(v => `<option ${v === s.crc ? "selected" : ""}>${v}</option>`).join("");
+  $("enc").innerHTML = s.encodings.map(e => `<option value="${e.id}" ${e.id === s.encoding ? "selected" : ""}>${esc(e.label)}</option>`).join("");
+  $("noisebox").style.display = s.noise_p === null ? "none" : "";
+  if (s.noise_p !== null) { $("noise").value = s.noise_p; $("noisev").textContent = (s.noise_p * 100).toFixed(1) + "%"; }
+  renderMedium(s);
+  $("scopel").style.display = s.scope === null ? "none" : "";
+  $("scopeon").checked = !!s.scope;
+  document.body.classList.toggle("scoping", !!s.scope);
+  if (lastScope) renderScope(lastScope);
+  renderStats(s.stats);
+  renderLink(s.link, s.crc);
+}
+
+const CODING_TEXT = {fec: "FEC (Manchester + paridad P)", plain: "plain (nivel)"};
+const MODES = {block: "✋ Tapar", saturate: "🔦 IR", noise: "〰 Ruido"};
+const MODE_TEXT = {block: "tapado", saturate: "saturado con IR", noise: "con ruido", off: "sin interferencia"};
+const HEALTH_TEXT = {ok: "OK", flaky: "intermitente", down: "caído"};
+
+function renderMedium(s) {
+  const box = $("medium");
+  if (!s.interference) { box.style.display = "none"; return; }
+  if (!box.dataset.built) {
+    box.dataset.built = "1";
+    box.innerHTML = `<span class="lbl">Interferir lo que <b>recibe</b> este nodo (se mantiene hasta volver a pulsar):</span>` +
+      s.channels.map(ch => `<span class="ch" data-ch="${ch}"><i class="h"></i><b>${ch}</b>` +
+        Object.entries(MODES).map(([m, t]) => `<button data-mode="${m}">${t}</button>`).join("") + `</span>`).join("");
+  }
+  for (const el of box.querySelectorAll(".ch")) {
+    const ch = el.dataset.ch, h = s.health && s.health[ch];
+    el.querySelector(".h").className = "h " + (h || "");
+    el.querySelector(".h").title = h ? HEALTH_TEXT[h] : (s.coding === "plain" && ch !== "CLK" ? "plain: el receptor no puede saber si este canal está mal" : "sin datos aún");
+    for (const b of el.querySelectorAll("button")) b.classList.toggle("on", s.interference[ch] === b.dataset.mode);
+  }
+}
+
+function renderStats(st) {
+  const names = {tx: "TX", rx: "RX", ack_rx: "ACK rx", nack_rx: "NACK rx", ack_tx: "ACK tx", nack_tx: "NACK tx",
+                 crc_err: "CRC err", retx: "Retx", dup: "Dup", failed: "Fallidos", ping: "PING rx", pong: "PONG rx",
+                 fec_fixed: "Ticks reconstruidos", fec_suspect: "Corregidos por historial", fec_detected: "Error detectado",
+                 fec_lost: "Irrecuperables", clk_lost: "Ticks sin CLK"};
+  $("stats").innerHTML = Object.entries(names).filter(([k]) => k in st)
+    .map(([k, n]) => `<span>${n} <b>${st[k]}</b></span>`).join("");
+}
+
+const LINK_TEXT = {connected: "Conectado", rx_only: "Solo recibo (el peer no me confirma)", down: "Sin señal"};
+
+function renderLink(l, myCrc) {
+  $("link").className = l.state;
+  $("linktext").textContent = LINK_TEXT[l.state];
+  const info = [];
+  if (l.peer_hz) info.push(`CLK peer ${l.peer_hz} Hz`);
+  if (l.last_heard_s !== null) info.push(`último frame hace ${l.last_heard_s} s`);
+  $("linkinfo").textContent = info.join(" · ");
+  const w = $("warn");
+  if (l.peer_crc && l.peer_crc !== myCrc) {
+    w.style.display = "flex";
+    w.innerHTML = `⚠ El peer usa <b>CRC-8/${l.peer_crc}</b> y este nodo <b>CRC-8/${myCrc}</b>: sus frames no van a pasar la verificación.
+                   <button id="adopt">Usar ${l.peer_crc}</button>`;
+    $("adopt").onclick = () => api("/config", {crc: l.peer_crc}).then(renderState);
+  } else {
+    w.style.display = "none";
+  }
+}
+
+function bitsHtml(b) {
+  return `<span class="bits">` + ["syn", "sfd", "ctrl", "data", "crc", "seq"].map(k => `<span class="b-${k}">${b[k]}</span>`).join("") + `</span>`;
+}
+
+function dataLabel(f) {
+  if (f.type === "DATA") {
+    const c = f.data >= 0x20 && f.data < 0x7f ? ` '${esc(String.fromCharCode(f.data))}'` : "";
+    return `0x${hex(f.data)}${c}`;
+  }
+  if (f.type === "START") return `enc=${f.data}`;
+  if (f.type === "END") return `len=${f.data}`;
+  if (f.type === "PING" || f.type === "PONG") return `anuncia CRC-8/${f.peer_crc}`;
+  return "";
+}
+
+const HEARTBEAT = ["PING", "PONG"];
+
+function fecTag(c) {
+  if (!c || !(c.fixed || c.suspect || c.detected || c.lost || c.clk_lost)) return "";
+  const parts = [];
+  if (c.fixed) parts.push(`${c.fixed} reconstruidos`);
+  if (c.suspect) parts.push(`${c.suspect} por historial`);
+  if (c.detected) parts.push(`${c.detected} detectados`);
+  if (c.lost) parts.push(`${c.lost} irrecuperables`);
+  if (c.clk_lost) parts.push(`${c.clk_lost} sin CLK`);
+  return ` <span class="tag fix">FEC ${c.lanes.join(",")}: ${parts.join(", ")} de ${c.ticks} ticks</span>`;
+}
+
+// --- oscilloscope: one received frame, tick by tick ------------------------
+const scopeEvents = [];
+let lastScope = null;
+
+function tickFields(lanes, n) {
+  const sfd = Math.ceil(8 / lanes), out = [];
+  for (let t = 0; t < n; t++) {
+    if (t < 4) out.push("SYN");
+    else if (t < 4 + sfd) out.push("SFD");
+    else { const b = (t - 4 - sfd) * lanes; out.push(b < 4 ? "CTRL" : b < 12 ? "DATA" : b < 20 ? "CRC" : "SEQ"); }
+  }
+  return out;
+}
+
+function renderScope(ev) {
+  lastScope = ev;
+  if (!state) return;  // drawn by renderState once the channel list is known
+  const tr = ev.coding.trace, s = state, f = ev.frame;
+  if (!tr.length) return;
+  $("scopeinfo").innerHTML = `· ${f.type} ${f.type === "PING" || f.type === "PONG" ? "" : "seq=" + f.seq} ${dataLabel(f)} ` +
+    (ev.crc_ok ? `<span class="tag ok">CRC ok</span>` : `<span class="tag bad">CRC ≠</span>`) + fecTag(ev.coding);
+  const S = tr[0].rx[0].length, LBL = 92, TW = 48, BLOCK = 58, TOP = 34;
+  const chans = s.channels, n = tr.length, W = LBL + n * TW + 6, H = TOP + chans.length * BLOCK + 34;
+  const reads = s.read_points || [0];
+  const clkOk = S === 4 ? "1100" : "10";
+  const fields = tickFields(s.lanes, n);
+  const X = (t) => LBL + t * TW;
+  let g = "";
+  // field + tick header, tick boundaries and mid-tick lines
+  for (let t = 0; t < n; t++) {
+    if (t === 0 || fields[t] !== fields[t - 1]) {
+      let e = t; while (e + 1 < n && fields[e + 1] === fields[t]) e++;
+      g += `<rect x="${X(t) + 1}" y="0" width="${(e - t + 1) * TW - 2}" height="14" rx="3" style="fill:var(--b-${fields[t]});opacity:.18"/>`;
+      g += `<text x="${X(t) + 4}" y="11" style="fill:var(--b-${fields[t]})">${fields[t]}</text>`;
+    }
+    g += `<text x="${X(t) + TW / 2}" y="28" text-anchor="middle" style="fill:var(--muted)">${t}</text>`;
+    g += `<line x1="${X(t)}" y1="${TOP - 2}" x2="${X(t)}" y2="${H - 30}" style="stroke:var(--line)"/>`;
+    g += `<line x1="${X(t) + TW / 2}" y1="${TOP - 2}" x2="${X(t) + TW / 2}" y2="${H - 30}" style="stroke:var(--muted);opacity:.45" stroke-dasharray="2 3"/>`;
+  }
+  g += `<line x1="${X(n)}" y1="${TOP - 2}" x2="${X(n)}" y2="${H - 30}" style="stroke:var(--line)"/>`;
+  chans.forEach((ch, ci) => {
+    const y0 = TOP + ci * BLOCK;
+    const wave = (key, top, bot) => {
+      const pts = [];
+      tr.forEach((tk, t) => {
+        const sm = tk[key] ? tk[key][ci] : null;
+        if (!sm) return;
+        for (let k = 0; k < S; k++) {
+          const y = sm[k] === "1" ? top : bot;
+          pts.push(`${X(t) + k * TW / S},${y}`, `${X(t) + (k + 1) * TW / S},${y}`);
+        }
+      });
+      return pts.join(" ");
+    };
+    // interference: highlight ticks where what arrived differs from what was sent
+    tr.forEach((tk, t) => {
+      if (tk.tx && tk.tx[ci] !== tk.rx[ci])
+        g += `<rect x="${X(t)}" y="${y0}" width="${TW}" height="${BLOCK - 6}" style="fill:var(--bad);opacity:.13"/>`;
+    });
+    g += `<text x="4" y="${y0 + 12}" style="fill:var(--ink);font-weight:bold">${ch}</text>`;
+    g += `<text x="4" y="${y0 + 24}" style="fill:var(--muted)">tx / rx</text>`;
+    g += `<polyline points="${wave("tx", y0 + 2, y0 + 10)}" style="fill:none;stroke:var(--muted);stroke-width:1.2;opacity:.8"/>`;
+    g += `<polyline points="${wave("rx", y0 + 16, y0 + 30)}" style="fill:none;stroke:var(--data);stroke-width:2"/>`;
+    tr.forEach((tk, t) => {
+      for (const k of reads) {
+        const v = tk.rx[ci][k] === "1";
+        g += `<circle cx="${X(t) + (k + 0.5) * TW / S}" cy="${v ? y0 + 16 : y0 + 30}" r="2.6" style="fill:${v ? "var(--me)" : "var(--panel)"};stroke:var(--me)"/>`;
+      }
+      // what the receiver made of this channel on this tick
+      let lab, col = "var(--ink)";
+      if (ci === 0) {
+        const ok = tk.rx[0] === clkOk;
+        lab = ok ? "✓" : "E"; col = ok ? "var(--ok)" : "var(--bad)";
+      } else {
+        const j = ci - 1, r = tk.read[j];
+        const fin = j < s.lanes ? tk.bits[j] : tk.bits.reduce((a, b) => a ^ b, 0);
+        if (tk.out === "lost" && r === null) { lab = "?"; col = "var(--bad)"; }
+        else if (r === null) { lab = `E→${fin}`; col = "var(--warn)"; }
+        else if (r !== fin) { lab = `${r}→${fin}`; col = "var(--warn)"; }
+        else { lab = String(r); }
+        if (tk.out === "detected") col = "var(--bad)";
+      }
+      g += `<text x="${X(t) + TW / 2}" y="${y0 + 45}" text-anchor="middle" style="fill:${col};font-weight:bold">${lab}</text>`;
+    });
+  });
+  // final bits handed to the deframer
+  const yb = TOP + chans.length * BLOCK + 4;
+  g += `<text x="4" y="${yb + 13}" style="fill:var(--ink);font-weight:bold">bits</text>`;
+  const OUTCOL = {fixed: "var(--warn)", fixed_suspect: "var(--warn)", ok_no_parity: "var(--warn)", detected: "var(--bad)", lost: "var(--bad)"};
+  tr.forEach((tk, t) => {
+    if (OUTCOL[tk.out]) g += `<rect x="${X(t) + 2}" y="${yb}" width="${TW - 4}" height="18" rx="3" style="fill:${OUTCOL[tk.out]};opacity:.22"/>`;
+    g += `<text x="${X(t) + TW / 2}" y="${yb + 13}" text-anchor="middle" style="fill:var(--b-${fields[t]});font-weight:bold">${tk.bits.join("")}</text>`;
+  });
+  $("scope").innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${g}</svg>`;
+}
+
+function addRow(html, cls) {
+  const s = stick(log);
+  const div = document.createElement("div");
+  div.className = "row " + (cls || "");
+  div.innerHTML = html;
+  log.appendChild(div);
+  while (log.children.length > 500) log.removeChild(log.firstChild);
+  if (s) log.scrollTop = log.scrollHeight;
+}
+
+function note(ev, text, cls) { addRow(`<span class="t">${hhmmss(ev.ts)}</span><span>${text}</span>`, "note " + (cls || "")); }
+
+function frameRow(ev, dir) {
+  const f = ev.frame;
+  const hb = HEARTBEAT.includes(f.type);
+  let tail = "";
+  if (dir === "rx") tail = ev.crc_ok ? ` <span class="tag ok">CRC ok</span>` : ` <span class="tag bad">CRC 0x${hex(f.crc)} ≠ 0x${hex(f.crc_expected)}</span>`;
+  if (dir === "rx") tail += fecTag(ev.coding);
+  if (dir === "rx" && ev.coding && ev.coding.trace) {
+    scopeEvents.push(ev);
+    tail += `<button class="scopebtn" data-scope="${scopeEvents.length - 1}" title="ver en el osciloscopio">🔬</button>`;
+    if (f.type === "DATA" || !lastScope) renderScope(ev);
+  }
+  if (ev.note) tail += ` <span class="tag">${esc(ev.note)}</span>`;
+  const seq = hb ? "" : `seq=${f.seq} `;
+  addRow(`<span class="t">${hhmmss(ev.ts)}</span><span class="dir ${dir}">${dir.toUpperCase()}</span>` +
+         `<span>${f.type}</span><span>${seq}${dataLabel(f)}${tail}<br>${bitsHtml(f.bits)}</span>`,
+         (dir === "rx" && !ev.crc_ok ? "bad " : "") + (hb && (dir === "tx" || ev.crc_ok) ? "hb" : ""));
+}
+
+function addMsg(cls, html) {
+  const s = stick(chat);
+  const div = document.createElement("div");
+  div.className = "msg " + cls;
+  div.innerHTML = html;
+  chat.appendChild(div);
+  if (s) chat.scrollTop = chat.scrollHeight;
+  return div;
+}
+
+function onEvent(ev) {
+  switch (ev.kind) {
+    case "tx": frameRow(ev, "tx"); break;
+    case "rx": frameRow(ev, "rx"); break;
+    case "retx": note(ev, `↻ Retransmisión seq=${ev.seq} (${ev.reason.toUpperCase()}), intento ${ev.attempt}`, "warn"); break;
+    case "dup": note(ev, `Duplicado seq=${ev.seq} descartado (ACK reenviado)`, "warn"); break;
+    case "error": note(ev, "✕ " + esc(ev.msg), "err"); break;
+    case "info": note(ev, esc(ev.msg)); break;
+    case "config": note(ev, `Config: CRC-8/${ev.crc}, ${ev.encoding}` + (ev.noise_p !== null ? `, ruido ${(ev.noise_p * 100).toFixed(1)}%` : "")); break;
+    case "interfere": note(ev, `⚡ ${ev.channel} ${MODE_TEXT[ev.mode] || ev.mode}` + (ev.ticks ? ` por ${ev.ticks} ticks` : ""), ev.mode === "off" ? "" : "warn"); break;
+    case "channel": note(ev, `Canal ${ev.channel}: ${HEALTH_TEXT[ev.health]}` +
+                         (ev.health === "down" && state && state.coding === "fec" ? (ev.channel === "CLK" ? " → timing desde los flancos de datos" : " → se reconstruye con la paridad") : ""),
+                         ev.health === "ok" ? "" : ev.health === "down" ? "err" : "warn"); break;
+    case "link": {
+      const crc = ev.peer_crc ? ` · peer usa CRC-8/${ev.peer_crc}` : "";
+      note(ev, `Enlace: ${LINK_TEXT[ev.state]}${crc}${ev.crc_match ? "" : " ⚠ distinto al de este nodo"}`,
+           ev.state === "connected" && ev.crc_match ? "" : ev.state === "down" ? "err" : "warn");
+      break;
+    }
+    case "chat_out": {
+      const bytes = ev.chars.map(c => `${esc(c.ch)}→${c.bytes.join(" ")}`).join("  ");
+      const el = addMsg("me", `${esc(ev.text)}<div class="bytes">${bytes}</div><div class="bar"><i></i></div><div class="meta">${ev.encoding} · enviando…</div>`);
+      outMsgs[ev.id] = el; break;
+    }
+    case "chat_progress": {
+      const el = outMsgs[ev.id];
+      if (el) el.querySelector(".bar > i").style.width = (100 * ev.done / ev.total) + "%";
+      break;
+    }
+    case "chat_status": {
+      const el = outMsgs[ev.id];
+      if (el) el.querySelector(".meta").textContent =
+        (ev.ok ? "✓ entregado" : "✕ falló") + ` · ${ev.frames} frames · ${ev.retx} retx · ${ev.seconds}s`;
+      break;
+    }
+    case "chat_partial":
+      if (!partialEl) partialEl = addMsg("peer partial", "");
+      partialEl.innerHTML = `${esc(ev.text) || "…"}<div class="meta">recibiendo (${ev.encoding})${ev.byte ? " · byte 0x" + ev.byte : ""}</div>`;
+      break;
+    case "chat_in":
+      if (!partialEl) partialEl = addMsg("peer", "");
+      partialEl.className = "msg peer";
+      partialEl.innerHTML = `${esc(ev.text)}<div class="meta">${ev.encoding} · ${ev.bytes} bytes${ev.complete ? "" : " · ⚠ longitud no coincide"}</div>`;
+      partialEl = null; break;
+  }
+}
+
+$("form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = $("text").value;
+  if (!text) return;
+  $("text").value = "";
+  await api("/send", {text});
+});
+$("crc").addEventListener("change", e => api("/config", {crc: e.target.value}).then(renderState));
+$("enc").addEventListener("change", e => api("/config", {encoding: e.target.value}).then(renderState));
+$("scopeon").addEventListener("change", e => api("/config", {scope: e.target.checked}).then(renderState));
+$("log").addEventListener("click", e => {
+  const i = e.target.dataset && e.target.dataset.scope;
+  if (i !== undefined) renderScope(scopeEvents[+i]);
+});
+$("noise").addEventListener("input", e => { $("noisev").textContent = (e.target.value * 100).toFixed(1) + "%"; });
+$("noise").addEventListener("change", e => api("/config", {noise_p: parseFloat(e.target.value)}).then(renderState));
+$("medium").addEventListener("click", e => {
+  const mode = e.target.dataset && e.target.dataset.mode;
+  if (!mode) return;
+  const ch = e.target.closest(".ch").dataset.ch;
+  const off = e.target.classList.contains("on");
+  api("/interfere", {channel: ch, mode: off ? "off" : mode}).then(renderMedium);
+});
+
+document.body.classList.add("hide-hb");
+$("showhb").addEventListener("change", e => document.body.classList.toggle("hide-hb", !e.target.checked));
+
+api("/state").then(renderState);
+setInterval(() => api("/state").then(s => { state = s; renderMedium(s); renderStats(s.stats); renderLink(s.link, s.crc); }), 1000);
+if (location.search.includes("snapshot")) {
+  // one-shot backlog, for screenshots and printing
+  fetch("/events?once=1").then(r => r.text()).then(t => t.split("\n\n").forEach(c => {
+    if (c.startsWith("data: ")) onEvent(JSON.parse(c.slice(6)));
+  }));
+} else {
+  const es = new EventSource("/events");
+  es.onopen = () => { chat.innerHTML = ""; log.innerHTML = ""; partialEl = null; scopeEvents.length = 0; };  // server replays its backlog on (re)connect
+  es.onmessage = (m) => onEvent(JSON.parse(m.data));
+}
+</script>
+</body>
+</html>
