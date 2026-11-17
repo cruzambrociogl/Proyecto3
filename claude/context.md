@@ -4,7 +4,8 @@ The full quoted record is `docs/design-log.md`. This file is the short version a
 
 ## People
 
-- **Cruz** — the student; owns the project and does the hardware. He prefers explanations in simple words, step by step, with ASCII diagrams and a worked example (the letter 'h' = `0x68`). He shows proposals to the professor and relays the feedback, often as WhatsApp messages or voice transcripts.
+- **Team:** Rosangela Rodriguez (22000127) and Cruz Ambrocio (20005588); both names go on every submitted document.
+- **Cruz** — owns the project and does the hardware. He prefers explanations in simple words, step by step, with ASCII diagrams and a worked example (the letter 'h' = `0x68`). He shows proposals to the professor and relays the feedback, often as WhatsApp messages or voice transcripts.
 - **The professor** — grades only the in-person defense. He wants the design initiative to come from the student and treats AI as a support tool, not a substitute. Write material for him in Spanish, short and to the point.
 
 ## The assignment (from the PDF)
@@ -60,15 +61,11 @@ What he accepted (v6b): a matrix where **rows are ticks (serial)** and **columns
 ## Hardware state (2026-11-14)
 
 - Boards: two BeagleBone Black planned, one on hand. Arduino Mega, 2× MCP23017 and a logic analyzer are also available.
-- Media parts: 2 KY-008 lasers, 4 DL-591 (unconfirmed, probably IR receivers), 2 IR LED emitters, 2 KY-038 microphones, 2 buzzers (active or passive unknown).
+- Media parts: 2 KY-008 lasers, 4 DL-591 (IR receivers, confirmed 2026-11-15), 2 IR LED emitters, 2 KY-038 microphones, 2 buzzers (active or passive unknown).
 - That makes 3 channels per direction; the design needs 5. Details, shopping list and circuit rules are in `docs/design-log.md` §22.
-- Proposed layout per direction: CLK + D0 on laser, D1 + P on IR, Q on sound.
+- Media (2026-11-16): laser, IR, sound, Hall, light (placeholder), one per channel. Proposed: CLK laser, D0 IR, D1 sound, P Hall, Q light. Pins on P8 only, same map on both boards (`docs/design-log.md` §28).
 
 ## Still open
 
-- CLK signals beyond tick and matrix start (silence = between frames, frame start): proposed only.
-- SYN/SFD inside matrices vs replaced by the CLK mark.
 - LOG line format for the matrix.
-- Repair-merge rule and channel-report bit order: proposed only.
-- Whether laser and IR count as two different media.
 - Time optimizations (deferred on purpose): ACK interrupting a frame, repeat only the failed matrix, drop SYN/SFD, back to one byte per matrix.

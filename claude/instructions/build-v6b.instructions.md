@@ -21,8 +21,8 @@ Spec: `docs/protocol.md`. Code map: `claude/analysis.md`. Describe each step to 
 
 - 4 priority levels (0 ACK/NACK, 1 retransmission, 2 START/DATA/END, 3 PING/PONG), FIFO within a level, aging after 3 turns.
 - Frame states NEW → READY → RUNNING → WAITING → DONE / FAILED, shown in the LOG.
-- Repair buffer: keep good cells of a failed frame and merge them with the repeat (proposed rule in spec §8.7).
-- Channel report: 4 bits in DATA of ACK/NACK/PING/PONG (proposed order D0 D1 P Q = bits 3..0).
+- Repair buffer: keep good cells of a failed frame and merge them with the repeat (rule in spec §8.7).
+- Channel report: 4 bits in DATA of ACK/NACK/PING/PONG (order D0 D1 P Q = bits 3..0).
 - Link states with the IDLE / TRANSFER names.
 - Tests for each rule, including the two-way example of spec §9.
 

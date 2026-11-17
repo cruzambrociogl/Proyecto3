@@ -684,3 +684,49 @@ Test: `blink.py P8_7 --rx P8_17` (laser on P8_7 as in §25, receiver on P8_17), 
 - **Hand block:** with the beam blocked the receiver reads 1 (dark) whatever the laser does, which is the "blocked" case. A hand leaks between the fingers; use a card or book for a clean demo.
 - **Room light:** in a later 1 Hz run, laser-off reads came back 0 ("lit") in short bursts about every 4 s, independent of the laser and of the hand. With the tube end fully covered, a whole run read 1 with no bursts, so the circuit is electrically clean and the bursts were light from the room getting into the tube (source not identified: something blinking or moving nearby). For the demo: longer tube, aim away from screens and lamps. The protocol's reading classifier would mark such bursts as noisy, but the channel should be clean before the matrix goes on top.
 - **Next:** the IR LED → DL-591 channel; later, the receiver inversion in the GPIO PHY config.
+
+## 27. Last protocol details closed; plan for the protocol document (2026-11-16)
+
+Cruz wants a protocol document like the one made for PROJECT02 (`PROJECT02/splat-pyramid/protocolo-sp.pdf`: markdown → HTML → PDF with headless Chrome, Spanish, requirement table, diagrams, decisions, results, references). A document for the professor cannot carry "(proposed)" items, so the open ones were settled first. Cruz agreed:
+
+1. **Frame start:** the `CLK` is silent between frames; the first tick after a silence is tick 0 of matrix 0.
+2. **SYN and SFD stay inside the matrices** (matrices 0 to 3). The assignment requires the `SYN → SFD → CTRL → DATA → CRC` structure; taking them out is only a time optimization, left for later.
+3. **Repair rule** (spec §8.7) and **channel-report bit order** (`D0 D1 P Q` = bits 3..0, also carried by NACK) as written.
+
+Still open: the LOG line format (the document describes what a line contains, the exact format comes with the code) and the physical media.
+
+**Risk found in the assignment PDF:** its table of suggested media lists "Luz / infrarrojo" as one row, so laser and IR may count as one medium (light). With the parts on hand that would be 2 media (light, sound) against a minimum of 3. A third medium (vibration, magnetic, mechanical) or the professor's answer settles it.
+
+**Document plan:**
+- Part 1, the protocol: complete now, from `docs/protocol.md`, with only script-produced numbers and the matrix called a design (not yet running).
+- Part 2, the physical implementation (media, circuits, GPIO pins, wiring per medium, measured results): filled as channels are built; the final PDF for the ZIP comes after the hardware checkpoint (build step 4/5).
+- English original first, then the Spanish version and the PDF from it.
+
+**Same day, change of plan:** Cruz asked for one complete document instead of two parts. `docs/protocol-document.md` now holds the protocol plus the physical implementation as it stands (§15: boards, media, circuit rules, wiring of the built laser channel and of the planned IR and sound channels, GPIO, hardware measurements) and the demo plan (§16). Unbuilt parts are marked planned; it is updated as channels are built. Authors: Rosangela Rodriguez (22000127) and Cruz Ambrocio (20005588).
+
+## 28. Five media and the P8 pin map (2026-11-16)
+
+Cruz set the media: **laser, sound, IR, Hall (magnetic) and light** (light is a placeholder, the exact medium still to be chosen). Five channels per direction, five media, one each.
+
+**Channel assignment (proposed by Claude, not yet confirmed by Cruz):** `CLK` laser (the only measured channel, fastest to settle, and the CLK is never interfered), `D0` IR, `D1` sound, `P` Hall, `Q` light. The data channels then have two light media and two that are not light: a hand or IR pointer over the light leaves sound and magnetism; noise at the microphone leaves the rest. Even if laser, IR and light count as one medium, light + sound + magnetism are three, which settles the risk in §27.
+
+**Pins: P8 only, the same map on both boards** (Cruz's idea, checked): P8_3–6 and P8_20–25 are eMMC, P8_27–46 HDMI/LCD and boot pins, P8_1–2 GND; 14 GPIO stay free (P8_7–P8_19, P8_26) for the 10 needed.
+
+| Channel | TX | RX |
+|---|---|---|
+| CLK laser | P8_7 | P8_17 |
+| D0 IR | P8_8 | P8_18 |
+| D1 sound | P8_13 (EHRPWM2B, for a passive buzzer) | P8_15 |
+| P Hall | P8_9 | P8_16 |
+| Q light | P8_10 | P8_26 |
+| spare | P8_11, P8_12, P8_14, P8_19 (EHRPWM2A) | |
+
+P8 has no power pins: 3.3 V from P9_3/4, 5 V from P9_7/8 or the external rail. P8_7/P8_17 keep the built laser channel. On one board (until the second BBB), node B goes on P9; that map comes with build step 3. The current `config/bbb_loopback.json` (v2) is unchanged.
+
+**Hall circuit (planned):** coil from 5 V through an NPN with a flyback diode; a digital Hall sensor such as the A3144 needs ≥ 4.5 V, so it runs on 5 V, but its open-collector output is pulled up to 3.3 V (10 kΩ), never 5 V. Parts to buy: Hall sensors, coils (or electromagnet modules), diodes.
+
+Written into `protocol.md` §2 (and `protocolo.md`), and `protocol-document.md` §15–§16.
+
+**PDFs (same day):** `docs/build_pdf.py` (markdown → HTML → headless Chrome, needs `pip install --user markdown`) builds `protocol-document.pdf` (21 pages) and the Spanish twin `documento-protocolo.md` → `documento-protocolo.pdf` (22 pages). The Spanish keeps protocol terms in English where a translation would change their meaning (tick, frame, CLK, stop-and-wait, aging, timeout, buffer, pull-down, frame types and states), following `protocolo.md`. Left open on purpose: the channel → medium assignment (proposed) and the fifth medium (light, placeholder).
+
+**Edits (same day, Cruz):** the submission documents no longer mention the professor (his rules are stated as design conditions, "someone interferes") and the R1–R17 requirements table in §2 was removed as redundant. Both PDFs rebuilt.

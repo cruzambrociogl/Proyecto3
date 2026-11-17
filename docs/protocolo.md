@@ -64,7 +64,7 @@ lectura  <  tick (4 lecturas)  <  matriz (5 ticks)  <  frame (10 matrices)  <  m
 - Son 5 canales por sentido y 10 en total. Cada sentido tiene su propio `CLK`.
 - Los dos sentidos no comparten nada en el medio: ambos equipos pueden enviar al mismo tiempo.
 - En reposo todos los emisores están apagados (nivel 0) y el `CLK` está en silencio.
-- Asignación de medios **(propuesto, depende de las piezas)**: `CLK` y `D0` en láser, `D1` y `P` en IR, `Q` en sonido. Así una mano que tapa toda la luz deja vivo el canal de sonido.
+- Medios, uno por canal **(propuesto)**: `CLK` láser, `D0` infrarrojo, `D1` sonido, `P` magnético (sensor Hall), `Q` luz (provisional: el medio exacto está por elegir). Una mano que tapa toda la luz deja vivos `D1` y `P`. Conexiones y pines (solo el header P8, el mismo mapa en las dos placas): [protocol-document.md](protocol-document.md) §15.
 
 ---
 
@@ -250,7 +250,7 @@ Ejemplo: DATA con 'h' (`68`), SEQ 1 y CRC-8/SMBUS (`5D`) son los medios bytes `A
 |---|---|---|
 | 1 | DATA | un byte del texto |
 | 2 | ACK | reporte de canales (bits 3 a 0) |
-| 3 | NACK | reporte de canales (bits 3 a 0) **(propuesto)** |
+| 3 | NACK | reporte de canales (bits 3 a 0) |
 | 4 | START | id del encoding |
 | 5 | END | cantidad de bytes del mensaje mod 256 |
 | 6 | PING | CRC-8 del equipo (bits 7 y 6) + reporte de canales (bits 3 a 0) |
@@ -258,7 +258,7 @@ Ejemplo: DATA con 'h' (`68`), SEQ 1 y CRC-8/SMBUS (`5D`) son los medios bytes `A
 
 **CRC-8 seleccionable:** SMBUS (id 0), AUTOSAR (1), SAE-J1850 (2), MAXIM-DOW (3). PING y PONG siempre se validan con SMBUS, para que los equipos se puedan leer aunque tengan configuraciones distintas.
 
-**Inicio del frame (propuesto):** el `CLK` está en silencio entre frames, y como nunca se interfiere, el primer tick después de un silencio es el tick 0 de la matriz 0. SYN y SFD lo confirman cuando se pueden resolver.
+**Inicio del frame:** el `CLK` está en silencio entre frames, y como nunca se interfiere, el primer tick después de un silencio es el tick 0 de la matriz 0. SYN y SFD siguen viajando dentro de las matrices 0 a 3, como exige el frame del enunciado, y confirman el inicio cuando se pueden resolver.
 
 ---
 
@@ -270,11 +270,11 @@ Ejemplo: DATA con 'h' (`68`), SEQ 1 y CRC-8/SMBUS (`5D`) son los medios bytes `A
 4. **Timeout.** Si no llega ACK ni NACK en 2 tiempos de frame, el emisor repite el frame. El otro equipo puede estar a medio frame propio antes de responder.
 5. **Retransmisión.** Se repite el frame completo. Máximo 8 reintentos; después el frame pasa a FAILED.
 6. **Duplicados.** Si se pierde un ACK y llega un frame repetido (mismo SEQ), el receptor lo descarta y vuelve a enviar el ACK. START siempre abre un mensaje nuevo y nunca se trata como duplicado.
-7. **Reparación.** El receptor conserva las celdas buenas de un frame que falló. Cuando llega la repetición **(regla propuesta)**:
+7. **Reparación.** El receptor conserva las celdas buenas de un frame que falló. Cuando llega la repetición:
    - si una matriz de la repetición se resuelve sola, se usa esa;
    - si no, se juntan las celdas conocidas de las dos copias y se resuelve de nuevo; si las dos copias se contradicen en alguna celda, se descartan las celdas guardadas;
    - el CRC-8 del frame decide al final. Lo guardado se borra cuando un frame se acepta.
-8. **Reporte de canales.** ACK, NACK, PING y PONG llevan 4 bits, uno por canal: bit 3 = `D0`, bit 2 = `D1`, bit 1 = `P`, bit 0 = `Q` **(orden propuesto)**. Un 1 significa "en el último frame que recibí, ese canal tuvo ticks bloqueados o ruidosos". El emisor lo muestra en su LOG.
+8. **Reporte de canales.** ACK, NACK, PING y PONG llevan 4 bits, uno por canal: bit 3 = `D0`, bit 2 = `D1`, bit 1 = `P`, bit 0 = `Q`. Un 1 significa "en el último frame que recibí, ese canal tuvo ticks bloqueados o ruidosos". El emisor lo muestra en su LOG.
 
 ---
 
@@ -496,11 +496,10 @@ De las 32 lecturas posibles iguales en todos los canales: sin invertir `D1`, 1 e
 
 **Abiertos (hay que decidirlos al construir):**
 
-1. Qué significa cada señal del `CLK` más allá de "tick" e "inicio de matriz": el silencio y el inicio de frame están solo propuestos ([sección 7](#7-frame)).
-2. Si SYN y SFD viajan dentro de matrices (así está escrito aquí) o los reemplaza la marca del `CLK`.
-3. El formato de una línea del LOG para la matriz: fila recibida, validaciones que pasaron, estado de las colas.
-4. La regla exacta de reparación y el orden de los bits del reporte de canales ([sección 8](#8-enlace-ack-nack-y-retransmisión)).
-5. Los medios físicos: con las piezas actuales alcanzan 3 canales por sentido y el diseño necesita 5.
+1. El formato de una línea del LOG para la matriz: fila recibida, validaciones que pasaron, estado de las colas.
+2. Los medios físicos: con las piezas actuales alcanzan 3 canales por sentido y el diseño necesita 5, y láser e IR pueden contar como un solo medio (luz).
+
+**Decidido el 2026-11-16:** inicio del frame por el silencio del `CLK` y SYN/SFD dentro de las matrices ([sección 7](#7-frame)); la regla de reparación y el orden de bits del reporte de canales ([sección 8](#8-enlace-ack-nack-y-retransmisión)).
 
 **Optimizaciones de tiempo (dejadas para después a propósito):**
 

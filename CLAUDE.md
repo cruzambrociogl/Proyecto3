@@ -35,6 +35,7 @@ Load the file a task needs; don't load them all at once.
 | `claude/instructions/professor-material.instructions.md` | preparing anything the professor will see |
 | `docs/protocol.md` | any protocol question; read the section, not the whole file |
 | `docs/design-log.md` | why something was decided; the full quoted feedback |
+| `docs/protocol-document.md` | the submission document, written for the professor; keep it in step with `protocol.md` and the hardware sections of the design log. Spanish twin `docs/documento-protocolo.md`; rebuild both PDFs with `python3 docs/build_pdf.py [file.md]` after any change |
 
 ## Rules
 
@@ -54,7 +55,7 @@ Load the file a task needs; don't load them all at once.
 
 ## Status tracker
 
-> Updated: 2026-11-15
+> Updated: 2026-11-16
 
 **Done**
 - v1/v2 stack in `phy-chat/`: web chat, LOG, oscilloscope view, UTF-8 / Extended ASCII, START/DATA/END messages, frame, CRC-8 ×4, ACK/NACK, stop-and-wait, SEQ, PING/PONG link health, simulated medium with interference buttons, GPIO PHY (1 read per tick), 29 tests.
@@ -72,6 +73,7 @@ Load the file a task needs; don't load them all at once.
 **Blocked / waiting on Cruz**
 - Parts: only 3 channels per direction on hand, 5 needed (`docs/design-log.md` §22).
 - Buzzer type (active/passive). (DL-591 confirmed: IR receivers.)
+- Confirm the channel → medium assignment (proposed: CLK laser, D0 IR, D1 sound, P Hall, Q light) and choose the fifth medium ("light" is a placeholder). Hall sensors and coils to buy (`docs/design-log.md` §28).
 - Second BBB not available yet. Both nodes run on one board until then.
 
 ## Decision log
@@ -89,3 +91,5 @@ Short entries; the full reasoning is in `docs/design-log.md` (section in bracket
 - **2026-11-14** — Professor accepts the complete proposal ("even too complex, but ok"). Design phase closed. [§20]
 - **2026-11-14** — `docs/protocol.md` written as the single spec. Hardware inventory and build plan recorded. Both nodes will be BBB. [§21, §22]
 - **2026-11-15** — Context moved to the project root (`docs/`, `claude/`, this file); `phy-chat/` holds implementation only. Docs in English. [§23]
+- **2026-11-16** — Last "(proposed)" protocol details accepted: frame start from CLK silence, SYN/SFD kept inside the matrices, repair rule, channel-report bit order. Protocol document planned in two parts (protocol now, physical implementation after the hardware checkpoint). Laser + IR may count as one medium. [§27]
+- **2026-11-16** — Five media, one per channel: laser, IR, sound, Hall, light (placeholder). Pins on P8 only, the same map on both boards. [§28]

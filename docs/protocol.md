@@ -64,7 +64,7 @@ read  <  tick (4 reads)  <  matrix (5 ticks)  <  frame (10 matrices)  <  message
 - 5 channels per direction, 10 in total. Each direction has its own `CLK`.
 - The two directions share nothing in the medium: both boards can send at the same time.
 - At rest all emitters are off (level 0) and the `CLK` is silent.
-- Media assignment **(proposed, depends on the parts)**: `CLK` and `D0` on laser, `D1` and `P` on IR, `Q` on sound. A hand that blocks all the light then leaves the sound channel alive.
+- Media, one per channel **(proposed)**: `CLK` laser, `D0` infrared, `D1` sound, `P` magnetic (Hall sensor), `Q` light (placeholder: the exact medium is still to be chosen). A hand that blocks all the light leaves `D1` and `P` alive. Wiring and pins (P8 header only, the same map on both boards): [protocol-document.md](protocol-document.md) §15.
 
 ---
 
@@ -250,7 +250,7 @@ Example: DATA with 'h' (`68`), SEQ 1 and CRC-8/SMBUS (`5D`) is the half bytes `A
 |---|---|---|
 | 1 | DATA | one byte of the text |
 | 2 | ACK | channel report (bits 3 to 0) |
-| 3 | NACK | channel report (bits 3 to 0) **(proposed)** |
+| 3 | NACK | channel report (bits 3 to 0) |
 | 4 | START | encoding id |
 | 5 | END | number of bytes in the message mod 256 |
 | 6 | PING | the board's CRC-8 (bits 7 and 6) + channel report (bits 3 to 0) |
@@ -258,7 +258,7 @@ Example: DATA with 'h' (`68`), SEQ 1 and CRC-8/SMBUS (`5D`) is the half bytes `A
 
 **Selectable CRC-8:** SMBUS (id 0), AUTOSAR (1), SAE-J1850 (2), MAXIM-DOW (3). PING and PONG are always checked with SMBUS, so the boards can read each other even when their settings differ.
 
-**Start of frame (proposed):** the `CLK` is silent between frames, and since it is never interfered, the first tick after a silence is tick 0 of matrix 0. SYN and SFD confirm it when they can be solved.
+**Start of frame:** the `CLK` is silent between frames, and since it is never interfered, the first tick after a silence is tick 0 of matrix 0. SYN and SFD still travel inside matrices 0 to 3, as the assignment's frame requires, and confirm the start when they can be solved.
 
 ---
 
@@ -270,11 +270,11 @@ Example: DATA with 'h' (`68`), SEQ 1 and CRC-8/SMBUS (`5D`) is the half bytes `A
 4. **Timeout.** If neither ACK nor NACK arrives within 2 frame times, the sender repeats the frame. The other board may be in the middle of its own frame before it can answer.
 5. **Retransmission.** The whole frame is repeated. At most 8 retries; then the frame goes to FAILED.
 6. **Duplicates.** If an ACK is lost and a repeated frame arrives (same SEQ), the receiver drops it and sends the ACK again. START always opens a new message and is never treated as a duplicate.
-7. **Repair.** The receiver keeps the good cells of a frame that failed. When the repeat arrives **(proposed rule)**:
+7. **Repair.** The receiver keeps the good cells of a frame that failed. When the repeat arrives:
    - if a matrix of the repeat solves on its own, use it;
    - otherwise merge the known cells of both copies and solve again; if the two copies contradict each other in any cell, drop the kept cells;
    - the frame CRC-8 decides at the end. Kept cells are cleared when a frame is accepted.
-8. **Channel report.** ACK, NACK, PING and PONG carry 4 bits, one per channel: bit 3 = `D0`, bit 2 = `D1`, bit 1 = `P`, bit 0 = `Q` **(proposed order)**. A 1 means "in the last frame I received, that channel had blocked or noisy ticks". The sender shows it in its LOG.
+8. **Channel report.** ACK, NACK, PING and PONG carry 4 bits, one per channel: bit 3 = `D0`, bit 2 = `D1`, bit 1 = `P`, bit 0 = `Q`. A 1 means "in the last frame I received, that channel had blocked or noisy ticks". The sender shows it in its LOG.
 
 ---
 
@@ -496,11 +496,10 @@ Of the 32 possible readings that are the same on every channel: without invertin
 
 **Open (to decide while building):**
 
-1. What each `CLK` signal means beyond "tick" and "matrix start": silence and frame start are only proposed ([section 7](#7-frame)).
-2. Whether SYN and SFD travel inside matrices (as written here) or the `CLK` mark replaces them.
-3. The format of a LOG line for the matrix: received row, validations passed, queue state.
-4. The exact repair rule and the bit order of the channel report ([section 8](#8-link-ack-nack-and-retransmission)).
-5. The physical media: the current parts make 3 channels per direction and the design needs 5.
+1. The format of a LOG line for the matrix: received row, validations passed, queue state.
+2. The physical media: the current parts make 3 channels per direction and the design needs 5, and laser and IR may count as one medium (light).
+
+**Decided on 2026-11-16:** frame start from `CLK` silence and SYN/SFD kept inside the matrices ([section 7](#7-frame)); the repair rule and the channel-report bit order ([section 8](#8-link-ack-nack-and-retransmission)).
 
 **Time optimizations (left for later on purpose):**
 
