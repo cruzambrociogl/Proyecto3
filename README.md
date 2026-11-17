@@ -5,6 +5,9 @@
 | `Proyecto_-_Capa_Fisica_.pdf` | the assignment |
 | `docs/protocol.md` | full specification of the accepted protocol (v6b) |
 | `docs/protocolo.md` | Spanish translation of `protocol.md` |
+| `docs/protocol-document.md` / `.pdf` | the submission document: protocol, physical implementation, demo, decisions, results (English original) |
+| `docs/documento-protocolo.md` / `.pdf` | Spanish translation of the submission document |
+| `docs/build_pdf.py` | markdown → PDF with headless Chrome: `python3 docs/build_pdf.py [file.md]` |
 | `docs/design-log.md` | design history, professor feedback, decisions, hardware, open questions |
 | `docs/matrix_v6b_es.csv`, `docs/matrix_v6b.csv` | the tables shown to the professor (Spanish / English) |
 | `docs/diseno_canales.xlsx` | v2 design workbook (older) |
